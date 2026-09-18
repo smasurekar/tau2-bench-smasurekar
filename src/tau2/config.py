@@ -1,3 +1,12 @@
+import os
+
+from dotenv import load_dotenv
+
+# Judge settings below are read from the environment at import time.
+# load_dotenv() is idempotent; tau2.utils.utils also calls it, but config.py must
+# not depend on import order.
+load_dotenv()
+
 # =============================================================================
 # SIMULATION DEFAULTS (overridable via CLI)
 # =============================================================================
@@ -21,9 +30,34 @@ DEFAULT_LLM_TEMPERATURE_USER = 0.0
 DEFAULT_LLM_ARGS_AGENT = {"temperature": DEFAULT_LLM_TEMPERATURE_AGENT}
 DEFAULT_LLM_ARGS_USER = {"temperature": DEFAULT_LLM_TEMPERATURE_USER}
 
-DEFAULT_LLM_NL_ASSERTIONS = "gpt-4.1-2025-04-14"
+# NL-assertions judge. Unlike the agent and user simulator there is no CLI flag for
+# it, so the endpoint/credentials are taken from the environment:
+#   TAU2_JUDGE_MODEL      LiteLLM model string (e.g. "openai/us/azure/openai/gpt-4.1")
+#   TAU2_JUDGE_BASE_URL   OpenAI-compatible base URL, without /chat/completions
+#   TAU2_JUDGE_API_KEY    key for that endpoint; falls back to the provider default
+#   TAU2_JUDGE_JSON_MODE  "1" (default) to request response_format=json_object
+# With none of these set the defaults are unchanged.
+DEFAULT_LLM_NL_ASSERTIONS = os.getenv("TAU2_JUDGE_MODEL", "gpt-4.1-2025-04-14")
 DEFAULT_LLM_NL_ASSERTIONS_TEMPERATURE = 0.0
-DEFAULT_LLM_NL_ASSERTIONS_ARGS = {"temperature": DEFAULT_LLM_NL_ASSERTIONS_TEMPERATURE}
+
+
+def _build_nl_assertions_args() -> dict:
+    """Build the judge LLM args from the environment.
+
+    Endpoint and credentials are env-driven so that pointing the judge at an
+    OpenAI-compatible gateway needs no code edit and no key in the repo.
+    """
+    args: dict = {"temperature": DEFAULT_LLM_NL_ASSERTIONS_TEMPERATURE}
+    if base_url := os.getenv("TAU2_JUDGE_BASE_URL"):
+        args["api_base"] = base_url
+    if api_key := os.getenv("TAU2_JUDGE_API_KEY"):
+        args["api_key"] = api_key
+    if os.getenv("TAU2_JUDGE_JSON_MODE", "1") == "1":
+        args["response_format"] = {"type": "json_object"}
+    return args
+
+
+DEFAULT_LLM_NL_ASSERTIONS_ARGS = _build_nl_assertions_args()
 
 DEFAULT_LLM_ENV_INTERFACE = "gpt-4.1-2025-04-14"
 DEFAULT_LLM_ENV_INTERFACE_TEMPERATURE = 0.0

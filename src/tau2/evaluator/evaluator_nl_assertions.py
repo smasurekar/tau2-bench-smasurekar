@@ -1,4 +1,5 @@
 import json
+import re
 
 from tau2.agent.base.streaming import (
     LinearizationStrategy,
@@ -11,6 +12,28 @@ from tau2.data_model.simulation import NLAssertionCheck, RewardInfo
 from tau2.data_model.tasks import RewardType, Task
 from tau2.evaluator.evaluator_base import EvaluatorBase
 from tau2.utils.llm_utils import generate
+
+
+def _parse_judge_response(content: str | None) -> dict:
+    """Parse the judge's JSON reply, tolerating markdown fences and prose padding.
+
+    The judge is asked for a bare JSON object, and models that honor
+    `response_format=json_object` return one. This is a safety net for judges that
+    wrap the object in a ```json fence or pad it with a sentence, so that a single
+    chatty reply does not take down the evaluation of a whole simulation.
+    """
+    if not content:
+        raise ValueError("NL assertions judge returned empty content")
+    text = content.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text).strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        start, end = text.find("{"), text.rfind("}")
+        if start == -1 or end <= start:
+            raise
+        return json.loads(text[start : end + 1])
 
 
 class NLAssertionsEvaluator(EvaluatorBase[Message]):
@@ -124,7 +147,7 @@ class NLAssertionsEvaluator(EvaluatorBase[Message]):
             call_name="nl_assertions_eval",
             **DEFAULT_LLM_NL_ASSERTIONS_ARGS,
         )
-        result_data = json.loads(assistant_message.content)
+        result_data = _parse_judge_response(assistant_message.content)
         return [
             NLAssertionCheck(
                 nl_assertion=result["expectedOutcome"],
