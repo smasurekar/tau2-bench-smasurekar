@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tau2-hermes"
+version = "0.1.0"
+description = "Run the Hermes agent scaffold as a tau2-bench half-duplex agent"
+readme = "README.md"
+# Intersection of tau2-bench and hermes-agent.
+requires-python = ">=3.12,<3.14"
+
+# Deliberately empty. Both tau2-bench and hermes-agent are supplied by the
+# environment this package is installed into: tau2 as an editable checkout,
+# hermes-agent as its own `uv sync`'d tree (it ships no wheel). Declaring them
+# here would make `pip install -e .` try to resolve names that do not exist on
+# any index. See misc/hermes-agent-integration.md section 3.
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["tau2_hermes"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
