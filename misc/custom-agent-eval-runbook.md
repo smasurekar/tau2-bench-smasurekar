@@ -644,5 +644,5 @@ from a default-agent model result — do not submit one as the other.
 | Leaderboard submission | `docs/leaderboard-submission.md` |
 | Metrics implementation | `src/tau2/metrics/agent_metrics.py` |
 | Defaults | `src/tau2/config.py` |
-| Endpoint routing / model strings | `misc/nemotron-inference-hub-benchmark.md` §3 |
+| Endpoint routing / model strings | `misc/inference-hub-benchmark.md` §3 |
 | Judge wiring and secrets | `misc/judge-rewire-plan.md` |

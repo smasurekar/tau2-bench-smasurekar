@@ -7,7 +7,7 @@ Follow the steps in order. Each one ends with a check; don't move on until it pa
 
 - **Design and rationale:** `misc/hermes-agent-integration.md`
 - **Adapter code:** `tau2-hermes/`
-- **Plain-model baseline (no Hermes):** `misc/nemotron-inference-hub-benchmark.md`
+- **Plain-model baseline (no Hermes):** `misc/inference-hub-benchmark.md`
 
 ---
 
@@ -369,10 +369,44 @@ Watch memory and that the process exits cleanly.
 
 Hermes' tool registry is process-global, so one process serves exactly one domain.
 
+**Always pass `--task-split-name base` explicitly.** The default split is *not*
+uniform across domains — verified by calling `load_tasks()` directly:
+
+| Command | Tasks you actually get |
+|---|---|
+| `--task-set-name airline` | 50 = `base` ✓ |
+| `--task-set-name retail` | 114 = `base` ✓ |
+| `--task-set-name telecom` | **2285 = the FULL set**, not `base` |
+| `--task-set-name telecom --task-split-name base` | 114 ✓ |
+
+Telecom's loader returns the full set when no split is given. At 4 trials that is
+**9,140 simulations (~30 h)** instead of 456. Nothing warns you: the banner just
+reads `Tasks: All`, and the first clue is the status line counting to 9140.
+
+Check the status line in the first minute of every run — `Status: N/<total>` must
+match the task count you expect.
+
 ```bash
-  --domain retail  --save-to hermes_nemotron3ultra_retail
-  --domain telecom --save-to hermes_nemotron3ultra_telecom
+  --domain retail  --task-set-name retail  --task-split-name base \
+    --num-trials 4 --save-to hermes_nemotron3ultra_retail_base_4trials
+  --domain telecom --task-set-name telecom --task-split-name base \
+    --num-trials 4 --save-to hermes_nemotron3ultra_telecom_base_4trials
 ```
+
+### Which domains actually use the judge
+
+Only retail invokes the NL-assertion judge. Confirmed from each run's
+`reward_breakdown`:
+
+| Domain | Tasks with `nl_assertions` | `NL_ASSERTION` scored? |
+|---|---|---|
+| airline | 50/50 | **No** — DB + COMMUNICATE only |
+| retail | 40/114 | **Yes** |
+| telecom | 0/114 | **No** — ENV_ASSERTION |
+
+So `TAU2_JUDGE_MODEL` is load-bearing for retail and inert for airline/telecom.
+Report the judge only where it was actually used; carrying it across all three rows
+implies a scoring component that airline and telecom never had.
 
 ### 8d. The baseline arm — same model, no Hermes
 
@@ -433,6 +467,9 @@ is the scaffold's contribution — that is your headline result.**
 | `cost` reported as 0.0 | No price table for this model | Expected, harmless |
 | Run hangs on one task | A tool call never returned | Agent times out and unwinds on its own; check logs for `did not answer` |
 | Second domain in the same process fails | Hermes' registry is process-global | One command per domain (8c) |
+| Run is counting to 9140, not 456 | `--task-split-name base` omitted on telecom | Telecom defaults to the full 2285-task set; pass the split explicitly (8c) |
+| `AzureException: messages must contain the word 'json'` | Judge sends `response_format=json_object`, which this gateway rejects **regardless of prompt wording** | Set `TAU2_JUDGE_JSON_MODE=0`; the fence-stripping parser handles plain JSON |
+| pass^k looks fine but `N` < simulations run | Judge failures became `infrastructure_error`, which `get_metrics_df` silently filters out | Watch the `infrastructure_error` count, not just the score |
 | `KeyError: Task Set test not found in registry` | `test` is a split, not a task set | `--task-set-name airline --task-split-name test` |
 | `ValueError: Number of trials 1 is less than k 4` | pass^4 requested from a 1-trial run | Re-run with `--num-trials 4`; it cannot be recovered after the fact |
 | pass^k numbers look wrong / trial-count mismatch | A 4-trial run resumed into a 1-trial results dir | Use a fresh `--save-to` whenever the trial count changes |

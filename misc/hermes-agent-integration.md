@@ -1087,7 +1087,7 @@ the single-environment install genuinely fails.
 | What | Where |
 |---|---|
 | Step-by-step run instructions | `misc/hermes-agent-runbook.md` |
-| Plain-model (no-scaffold) baseline on the same endpoint | `misc/nemotron-inference-hub-benchmark.md` |
+| Plain-model (no-scaffold) baseline on the same endpoint | `misc/inference-hub-benchmark.md` |
 | τ² custom-agent contract, registry, gotchas | `misc/custom-agent-integration.md` |
 | τ² agent developer guide / directory rules | `src/tau2/agent/README.md`, `src/tau2/agent/AGENTS.md` |
 | Runnable agent examples | `examples/agents/minimal_text_agent.py`, `react_agent.py` |

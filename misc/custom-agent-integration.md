@@ -580,7 +580,7 @@ Do not start with a full sweep. Each rung is a cheap gate on a specific failure 
 | 8 | `ToolCall.id` left empty | Result correlation can break with parallel calls | Generate a unique id per call |
 | 9 | Agent name reused | `ValueError: Agent factory my_agent already registered` | Register once; guard with `if "my_agent" not in registry.get_agents()` |
 | 10 | Mixin order wrong | `__init__` arguments silently vanish | Config mixins → capability mixins → protocol base last |
-| 11 | `uv sync` core-only | `ModuleNotFoundError: No module named 'websockets'` on any `tau2` command | `uv pip install websockets` or `uv sync --extra voice` (pre-existing repo issue, see `misc/nemotron-inference-hub-benchmark.md` §2) |
+| 11 | `uv sync` core-only | `ModuleNotFoundError: No module named 'websockets'` on any `tau2` command | `uv pip install websockets` or `uv sync --extra voice` (pre-existing repo issue, see `misc/inference-hub-benchmark.md` §2) |
 
 ---
 
@@ -619,5 +619,5 @@ A custom agent changes what the number means, so state it explicitly in any writ
 | Communication validation | `src/tau2/orchestrator/orchestrator.py:708` |
 | CLI `--agent` flag | `src/tau2/cli.py:68` |
 | Default agent name | `src/tau2/config.py::DEFAULT_AGENT_IMPLEMENTATION` |
-| Endpoint routing / model strings | `misc/nemotron-inference-hub-benchmark.md` §3 |
+| Endpoint routing / model strings | `misc/inference-hub-benchmark.md` §3 |
 | Judge wiring and secret handling | `misc/judge-rewire-plan.md` |
