@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tau2-fba"
+version = "0.1.0"
+description = "Run the text Frontend/Backend Agent prototype as a tau2-bench half-duplex agent"
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+
+# Deliberately empty, like tau2-hermes. tau2-bench is the environment this package
+# runs in (editable checkout), and the prototype is imported from its source tree
+# via FBA_PROTOTYPE_ROOT / PYTHONPATH -- it is not packaged, and installing
+# nemotron-voice-agent would pull the whole Pipecat voice stack into tau2's env.
+# See ../misc/prototypes/text-frontend-backend-agent-tau2-integration-plan.md section 6.4.
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["tau2_fba"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
