@@ -1,0 +1,32 @@
+{"timestamp": 1800000001.0, "kind": "session_start", "session_id": "sess_paired_retry", "audio_ms": 0, "model": "pine-t-paired"}
+{"timestamp": 1800000003.0, "kind": "session_end", "session_id": "sess_paired_retry", "audio_ms": 2000}
+{"timestamp": 1800000004.0, "kind": "session_start", "session_id": "sess_paired", "audio_ms": 0, "model": "pine-t-paired"}
+{"timestamp": 1800000010.0, "kind": "speech_stopped", "session_id": "sess_paired", "audio_ms": 6000, "audio_end_ms": 5500}
+{"timestamp": 1800000010.01, "kind": "agent_turn_start", "session_id": "sess_paired", "turn_id": 1, "text": "hi"}
+{"timestamp": 1800000010.6, "kind": "agent_turn_done", "session_id": "sess_paired", "turn_id": 1, "latency_ms": 600, "outcome": "text", "input_tokens": 100, "output_tokens": 20, "step": "respond", "frontend": {"calls": 1, "prompt_tokens": 100, "completion_tokens": 20, "cached_tokens": 0, "total_tokens": 120, "latency_ms": 580}, "backend": {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "cached_tokens": 0, "total_tokens": 0, "latency_ms": 0.0}}
+{"timestamp": 1800000010.7, "kind": "turn_latency", "session_id": "sess_paired", "turn_id": 1, "user_stop_to_first_audio_ms": 700}
+{"timestamp": 1800000020.0, "kind": "speech_stopped", "session_id": "sess_paired", "audio_ms": 16600, "audio_end_ms": 16000}
+{"timestamp": 1800000020.02, "kind": "agent_turn_start", "session_id": "sess_paired", "turn_id": 2, "text": "create a task"}
+{"timestamp": 1800000021.5, "kind": "agent_turn_done", "session_id": "sess_paired", "turn_id": 2, "latency_ms": 1500, "outcome": "tool_calls", "input_tokens": 1000, "output_tokens": 50, "step": "respond", "frontend": {"calls": 1, "prompt_tokens": 400, "completion_tokens": 20, "cached_tokens": 0, "total_tokens": 420, "latency_ms": 480}, "backend": {"calls": 1, "prompt_tokens": 600, "completion_tokens": 30, "cached_tokens": 0, "total_tokens": 630, "latency_ms": 1000}}
+{"timestamp": 1800000020.5, "kind": "filler_timing", "session_id": "sess_paired", "turn_id": 2, "mode": "log_only", "text": "One moment.", "turn_end": {"wall": "x", "audio_ms": 16000}, "filler_ready": {"since_turn_end_ms": 520, "frontend_latency_ms": 490}, "backend_done": null, "first_answer_audio": null, "speak_after_ms": 300, "would_have_spoken": true, "spoken": false, "outcome": "tool_calls"}
+{"timestamp": 1800000022.0, "kind": "tool_output_in", "session_id": "sess_paired", "call_id": "c1", "output": "{}"}
+{"timestamp": 1800000023.0, "kind": "agent_turn_done", "session_id": "sess_paired", "turn_id": 2, "latency_ms": 900, "outcome": "tool_calls", "input_tokens": 700, "output_tokens": 40, "step": "resume", "frontend": {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "cached_tokens": 0, "total_tokens": 0, "latency_ms": 0.0}, "backend": {"calls": 1, "prompt_tokens": 700, "completion_tokens": 40, "cached_tokens": 0, "total_tokens": 740, "latency_ms": 880}}
+{"timestamp": 1800000023.1, "kind": "tool_output_in", "session_id": "sess_paired", "call_id": "c2", "output": "{}"}
+{"timestamp": 1800000025.0, "kind": "agent_turn_done", "session_id": "sess_paired", "turn_id": 2, "latency_ms": 1100, "outcome": "text", "input_tokens": 800, "output_tokens": 60, "step": "resume", "frontend": {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "cached_tokens": 0, "total_tokens": 0, "latency_ms": 0.0}, "backend": {"calls": 1, "prompt_tokens": 800, "completion_tokens": 60, "cached_tokens": 0, "total_tokens": 860, "latency_ms": 1090}}
+{"timestamp": 1800000025.12, "kind": "turn_latency", "session_id": "sess_paired", "turn_id": 2, "user_stop_to_first_audio_ms": 5000}
+{"timestamp": 1800000040.0, "kind": "speech_stopped", "session_id": "sess_paired", "audio_ms": 30600, "audio_end_ms": 30000}
+{"timestamp": 1800000040.02, "kind": "agent_turn_start", "session_id": "sess_paired", "turn_id": 3, "text": "and another"}
+{"timestamp": 1800000040.5, "kind": "filler_timing", "session_id": "sess_paired", "turn_id": 3, "mode": "log_only", "text": "Let me see.", "turn_end": {"wall": "x", "audio_ms": 30000}, "filler_ready": {"since_turn_end_ms": 520, "frontend_latency_ms": 490}, "backend_done": null, "first_answer_audio": null, "speak_after_ms": 300, "would_have_spoken": true, "spoken": false, "outcome": "cancelled"}
+{"timestamp": 1800000041.0, "kind": "thinking_cancelled", "session_id": "sess_paired", "turn_id": 3, "merge": true, "reason": "turn_detected"}
+{"timestamp": 1800000058.0, "kind": "session_end", "session_id": "sess_paired", "audio_ms": 54000}
+{"timestamp": 1800010000.0, "kind": "session_start", "session_id": "sess_other_run", "audio_ms": 0, "model": "pine-t-paired"}
+{"timestamp": 1800010050.0, "kind": "session_end", "session_id": "sess_other_run", "audio_ms": 50000}
+{"timestamp": 1800020000.0, "kind": "session_start", "session_id": "sess_unrelated", "audio_ms": 0, "model": "pine-something-else"}
+{"timestamp": 1800000101.0, "kind": "session_start", "session_id": "sess_bo", "audio_ms": 0, "model": "pine-t-bo"}
+{"timestamp": 1800000105.0, "kind": "speech_stopped", "session_id": "sess_bo", "audio_ms": 4600, "audio_end_ms": 4000}
+{"timestamp": 1800000105.02, "kind": "agent_turn_start", "session_id": "sess_bo", "turn_id": 1, "text": "cancel my order"}
+{"timestamp": 1800000106.0, "kind": "agent_turn_done", "session_id": "sess_bo", "turn_id": 1, "latency_ms": 980, "outcome": "tool_calls", "input_tokens": 500, "output_tokens": 30, "step": "respond", "frontend": {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "cached_tokens": 0, "total_tokens": 0, "latency_ms": 0.0}, "backend": {"calls": 1, "prompt_tokens": 500, "completion_tokens": 30, "cached_tokens": 0, "total_tokens": 530, "latency_ms": 970}}
+{"timestamp": 1800000106.1, "kind": "tool_output_in", "session_id": "sess_bo", "call_id": "b1", "output": "{}"}
+{"timestamp": 1800000107.0, "kind": "agent_turn_done", "session_id": "sess_bo", "turn_id": 1, "latency_ms": 700, "outcome": "text", "input_tokens": 520, "output_tokens": 25, "step": "resume", "frontend": {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "cached_tokens": 0, "total_tokens": 0, "latency_ms": 0.0}, "backend": {"calls": 1, "prompt_tokens": 520, "completion_tokens": 25, "cached_tokens": 0, "total_tokens": 545, "latency_ms": 690}}
+{"timestamp": 1800000107.09, "kind": "turn_latency", "session_id": "sess_bo", "turn_id": 1, "user_stop_to_first_audio_ms": 2100}
+{"timestamp": 1800000120.0, "kind": "session_end", "session_id": "sess_bo", "audio_ms": 19000}

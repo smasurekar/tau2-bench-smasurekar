@@ -84,10 +84,10 @@ def main(argv: list[str] | None = None) -> int:
             f"frontend tools == ['call_backend']: {agent._frontend_client.expected_tools == {'call_backend'}}"
         )
         print(f"domain tool names in frontend prompt: {leaked or 'none'}")
-    print(
-        f"policy in backend prompt: {env.get_policy().strip()[:60] in agent.system_prompt(BACKEND)}"
-    )
-    return 0 if ok and not leaked else 1
+    # The WHOLE policy, verbatim -- not just its opening line.
+    policy_ok = env.get_policy().strip() in agent.system_prompt(BACKEND)
+    print(f"full policy verbatim in backend prompt: {policy_ok}")
+    return 0 if ok and not leaked and policy_ok else 1
 
 
 if __name__ == "__main__":
