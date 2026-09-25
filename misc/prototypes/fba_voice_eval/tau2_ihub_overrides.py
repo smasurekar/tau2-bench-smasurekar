@@ -22,6 +22,7 @@ import os
 import re
 from copy import deepcopy
 
+import websockets
 from openai import OpenAI
 
 import tau2.evaluator.auth_classifier as tau2_auth_classifier
@@ -29,6 +30,7 @@ import tau2.evaluator.hallucination_reviewer as tau2_hallucination_reviewer
 import tau2.evaluator.review_llm_judge as tau2_review_llm_judge
 import tau2.evaluator.review_llm_judge_user_only as tau2_review_user_only
 import tau2.user.user_simulator_streaming as tau2_user_streaming
+import tau2.voice.audio_native.openai.provider as tau2_realtime_provider
 import tau2.voice.synthesis.synthesize as tau2_synthesize
 from tau2.data_model.audio import AudioData, AudioEncoding, AudioFormat
 from tau2.data_model.voice_personas import (
@@ -163,3 +165,18 @@ for _module in (
     tau2_auth_classifier,
 ):
     _route(_module, REVIEW_CALLS, REVIEW_MODEL, REVIEW_BASE_URL)
+
+
+class _NoPingWebsockets:
+    """``websockets`` as tau2's Realtime provider sees it, with the client keepalive off."""
+
+    def __getattr__(self, name):
+        return getattr(websockets, name)
+
+    @staticmethod
+    def connect(*args, **kwargs):
+        kwargs.setdefault("ping_interval", None)
+        return websockets.connect(*args, **kwargs)
+
+
+tau2_realtime_provider.websockets = _NoPingWebsockets()

@@ -23,4 +23,8 @@ if __name__ == "__main__":
         f"REVIEW LLM OVERRIDE: {ihub.REVIEW_MODEL} at {ihub.REVIEW_BASE_URL} "
         "for the hallucination check and --auto-review"
     )
+    logger.warning(
+        "REALTIME CLIENT KEEPALIVE OVERRIDE: websockets ping_interval=None "
+        "(tau2 blocks its event loop during slow user TTS/LLM calls)"
+    )
     sys.exit(main())

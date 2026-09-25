@@ -31,7 +31,17 @@ export TAU2=/localhome/local-smasurekar/smasurekar/tau2-bench-smasurekar
 export AGENT=/localhome/local-smasurekar/smasurekar/nemotron-voice-agent-smasurekar
 export DUMP=/localhome/local-smasurekar/smasurekar/voice-agent-evaluation-dump
 export IHUB=https://inference-api.nvidia.com/v1
-export CAMPAIGN=$(date +%Y-%m-%d)_fba-voice          # one folder in the dump per evaluation campaign
+export CAMPAIGN=$(cat $TAU2/data/simulations/_consoles/CAMPAIGN 2>/dev/null)   # one dump folder per campaign
+```
+
+`CAMPAIGN` is the full UTC start time of the campaign plus a label, e.g. `2026-09-24_08-47-49Z_fba-voice`.
+Set it **once**, when the campaign's first run starts, and save it so that every later shell (monitoring,
+resumes, archiving hours later) uses the same folder:
+
+```bash
+# only when starting a new campaign
+echo "$(date -u +%Y-%m-%d_%H-%M-%SZ)_fba-voice" > $TAU2/data/simulations/_consoles/CAMPAIGN
+export CAMPAIGN=$(cat $TAU2/data/simulations/_consoles/CAMPAIGN); echo $CAMPAIGN
 ```
 
 ---
@@ -390,7 +400,7 @@ done
 - A run that stops can be resumed: rerun the same `tau3_run` line. The same `--save-to` resumes, and
   the helper appends a new `.start` stamp.
 - Don't change the agent config, models or code during a campaign. If something must change, start a
-  new `CAMPAIGN`.
+  new `CAMPAIGN` (write a new `_consoles/CAMPAIGN` file, see the top of this runbook).
 - (Optional) Filler validation run (integration plan §3.4): a third container on port 8768 with
   `filler.mode: speak`, and 5 airline tasks. It is for latency validation only and is **never** part of
   Pass^1.
@@ -627,7 +637,7 @@ complexity, models (frontend, backend, ASR, TTS, user simulator, judge), commits
 **Layout:**
 
 ```
-voice-agent-evaluation-dump/tau-3-voice/<CAMPAIGN>/
+voice-agent-evaluation-dump/tau-3-voice/<CAMPAIGN>/       e.g. 2026-09-24_08-47-49Z_fba-voice/
 ├── README.md                       run card
 ├── _reports/                       §7.2 outputs across arms (fba_voice_report.md, CSVs, JSON)
 └── fba_voice_<arm>_<domain>_<cx>/
@@ -651,7 +661,7 @@ more than about 100 MB, set up Git LFS for audio first:
 cd $DUMP
 git lfs install && git lfs track "tau-3-voice/**/*.wav" && git add .gitattributes
 git add tau-3-voice/$CAMPAIGN
-git commit -m "tau-3-voice: $CAMPAIGN fba-voice paired + backend-only"
+git commit -m "tau-3-voice: $CAMPAIGN fba-voice (<arms> <domains> <complexity>)"
 # git push   (pushes to gitlab-master; do this only when you intend to publish the campaign)
 ```
 
