@@ -1,17 +1,20 @@
 # Attribute failed tool calls and failed tasks to causes (observations doc §4.2).
-# Run from the tau2 repo root: python3 misc/prototypes/observations/attribute_failures.py
-import json,glob,re,collections
+# Run from the tau2 repo root: python3 misc/prototypes/observations/attribute_failures.py [RUN]
+# RUN defaults to fba_voice_paired_airline_regular; the agent model tag is pine-<RUN with - for _>.
+import json,glob,re,collections,sys
 from datetime import datetime
+RUN=sys.argv[1] if len(sys.argv)>1 else 'fba_voice_paired_airline_regular'
+MODEL='pine-'+RUN.replace('_','-')
 EV='/localhome/local-smasurekar/smasurekar/nemotron-voice-agent-smasurekar/logs/fba_voice_events.jsonl'
 recs=[json.loads(l) for l in open(EV) if l.strip()]
-sess={r['session_id']:r['timestamp'] for r in recs if r.get('kind')=='session_start' and r.get('model')=='pine-fba-voice-paired-airline-regular'}
+sess={r['session_id']:r['timestamp'] for r in recs if r.get('kind')=='session_start' and r.get('model')==MODEL}
 tasks={t['id']:t for t in json.load(open('data/tau2/domains/airline/tasks.json'))}
 ts=lambda s: datetime.fromisoformat(s).timestamp()
 NUM=dict(zero='0',oh='0',one='1',two='2',three='3',four='4',five='5',six='6',seven='7',eight='8',nine='9',underscore='_')
 norm=lambda t: ''.join(NUM.get(w,w) for w in t.lower().replace('.',' ').replace(',',' ').split())
 CALL=collections.Counter(); TASK=collections.Counter(); CONTRIB=collections.Counter(); per={}
 nfail=0; tot_err=0
-for f in glob.glob('data/simulations/fba_voice_paired_airline_regular/simulations/*.json'):
+for f in glob.glob(f'data/simulations/{RUN}/simulations/*.json'):
     d=json.load(open(f)); tid=d['task_id']; sc=json.dumps(tasks[tid]['user_scenario'])
     uid=re.search(r'[a-z]+_[a-z]+_\d{4}',sc).group(0)
     rids=set(re.findall(r'\b[A-Z0-9]{6}\b',sc))

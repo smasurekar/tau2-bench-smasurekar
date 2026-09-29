@@ -1,0 +1,236 @@
+[
+  {
+    "source": "data/simulations/fba_paired_airline_base_4trials",
+    "arm": "fba_paired",
+    "fba": true,
+    "domain": "airline",
+    "agent_llm": "nvidia/nvidia/nemotron-3-ultra",
+    "user_llm": "openai/azure/openai/gpt-5.2",
+    "num_trials": 4,
+    "simulations": 200,
+    "tasks": 50,
+    "infra_errors": 0,
+    "avg_reward": 0.71,
+    "pass_hat_k": {
+      "1": 0.71,
+      "2": 0.5833333333333333,
+      "3": 0.5,
+      "4": 0.44
+    },
+    "backend_turn_latency_s": {
+      "n": 808,
+      "mean": 13.69781113861386,
+      "p50": 11.479099999999999,
+      "p90": 27.45886000000001,
+      "p95": 34.556744999999985,
+      "max": 84.8488
+    },
+    "backend_call_latency_s": {
+      "n": 3646,
+      "mean": 3.0356092704333513,
+      "p50": 1.8687,
+      "p90": 7.2692499999999995,
+      "p95": 9.092375,
+      "max": 18.073
+    },
+    "backend_calls_per_turn": 4.512376237623762,
+    "e2e_llm_latency_per_turn_s": {
+      "n": 810,
+      "mean": 15.385159629629628,
+      "p50": 13.2549,
+      "p90": 29.64722,
+      "p95": 36.73203999999999,
+      "max": 85.9906
+    },
+    "filler_latency_s": {
+      "n": 808,
+      "mean": 1.7242577970297028,
+      "p50": 0.91615,
+      "p90": 4.772320000000001,
+      "p95": 6.81136,
+      "max": 12.778
+    },
+    "filler_presence_rate": 1.0,
+    "first_response_latency_s": {
+      "n": 810,
+      "mean": 1.7242604938271606,
+      "p50": 0.9170499999999999,
+      "p90": 4.76924,
+      "p95": 6.81032,
+      "max": 12.778
+    },
+    "frontend_completion_tokens_per_call": 132.30086313193587,
+    "tokens_per_task": {
+      "frontend": {
+        "prompt_tokens": 15402.315,
+        "completion_tokens": 536.48,
+        "total_tokens": 15938.795,
+        "reasoning_tokens": 0.0,
+        "cached_tokens": 0.0
+      },
+      "backend": {
+        "prompt_tokens": 122560.475,
+        "completion_tokens": 7533.82,
+        "total_tokens": 130094.295,
+        "reasoning_tokens": 5836.36,
+        "cached_tokens": 95855.36
+      }
+    },
+    "turns": 810,
+    "turns_without_backend": 2,
+    "decisions": {
+      "delegate": 808,
+      "direct": 2
+    },
+    "events": {
+      "frontend_repair": 1,
+      "empty_assistant_placeholder": 1
+    },
+    "provenance": {
+      "arm": "fba_paired",
+      "prototype": {
+        "package_dir": "/localhome/local-smasurekar/smasurekar/nemotron-voice-agent-smasurekar/src/prototypes/text_frontend_backend_agent",
+        "git_sha": "51036508e0931948800479c2d1113213952a4bca",
+        "dirty": true,
+        "dirty_files": [
+          " M src/prototypes/text_frontend_backend_agent/config/prompts.yaml",
+          " M src/prototypes/text_frontend_backend_agent/delegation.py"
+        ]
+      },
+      "agent_yaml_sha256": "578d277e2e4e842e9b5b6652a15d8ce38e4297d867ab19cb3e33f347a38bbc13",
+      "prompts_sha256": "1424011a7f02e46cc9fcbbc5e5a49b1618f1bb868615c0d4cad18fc5eeaf6d4b",
+      "domain_profile_sha256": "b486deb7dc99d032428741503423ad6f548d3009d3a557179754b752e4a76bf0",
+      "backend": {
+        "model": "nvidia/nvidia/nemotron-3-ultra",
+        "base_url": "https://inference-api.nvidia.com/v1",
+        "temperature": 0.0,
+        "max_tokens": 4096,
+        "extra_body": {
+          "chat_template_kwargs": {
+            "enable_thinking": true
+          },
+          "reasoning_budget": 1024
+        }
+      },
+      "max_concurrency": 4,
+      "strict_transport_errors": true,
+      "frontend": {
+        "model": "nvidia/nvidia/nemotron-3.5-lightning",
+        "base_url": "https://inference-api.nvidia.com/v1",
+        "temperature": 0.0,
+        "max_tokens": 1024,
+        "extra_body": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        }
+      }
+    }
+  },
+  {
+    "source": "data/simulations/fba_backend_only_airline_base_4trials",
+    "arm": "fba_backend_only",
+    "fba": true,
+    "domain": "airline",
+    "agent_llm": "nvidia/nvidia/nemotron-3-ultra",
+    "user_llm": "openai/azure/openai/gpt-5.2",
+    "num_trials": 4,
+    "simulations": 200,
+    "tasks": 50,
+    "infra_errors": 0,
+    "avg_reward": 0.79,
+    "pass_hat_k": {
+      "1": 0.79,
+      "2": 0.7,
+      "3": 0.65,
+      "4": 0.62
+    },
+    "backend_turn_latency_s": {
+      "n": 687,
+      "mean": 10.137428529839884,
+      "p50": 6.8743,
+      "p90": 24.3589,
+      "p95": 30.22042999999999,
+      "max": 58.508
+    },
+    "backend_call_latency_s": {
+      "n": 2320,
+      "mean": 3.001902327586207,
+      "p50": 1.8443999999999998,
+      "p90": 7.278929999999996,
+      "p95": 8.675389999999995,
+      "max": 22.1306
+    },
+    "backend_calls_per_turn": 3.3770014556040757,
+    "e2e_llm_latency_per_turn_s": {
+      "n": 687,
+      "mean": 10.137428529839884,
+      "p50": 6.8743,
+      "p90": 24.3589,
+      "p95": 30.22042999999999,
+      "max": 58.508
+    },
+    "filler_latency_s": null,
+    "filler_presence_rate": null,
+    "first_response_latency_s": {
+      "n": 687,
+      "mean": 10.15401673944687,
+      "p50": 6.8871,
+      "p90": 24.41974,
+      "p95": 30.237819999999992,
+      "max": 58.7448
+    },
+    "frontend_completion_tokens_per_call": null,
+    "tokens_per_task": {
+      "frontend": {
+        "prompt_tokens": 0.0,
+        "completion_tokens": 0.0,
+        "total_tokens": 0.0,
+        "reasoning_tokens": 0.0,
+        "cached_tokens": 0.0
+      },
+      "backend": {
+        "prompt_tokens": 91658.075,
+        "completion_tokens": 4709.845,
+        "total_tokens": 96367.92,
+        "reasoning_tokens": 3418.705,
+        "cached_tokens": 63160.32
+      }
+    },
+    "turns": 687,
+    "turns_without_backend": 0,
+    "decisions": {
+      "backend_only": 687
+    },
+    "events": {},
+    "provenance": {
+      "arm": "fba_backend_only",
+      "prototype": {
+        "package_dir": "/localhome/local-smasurekar/smasurekar/nemotron-voice-agent-smasurekar/src/prototypes/text_frontend_backend_agent",
+        "git_sha": "51036508e0931948800479c2d1113213952a4bca",
+        "dirty": true,
+        "dirty_files": [
+          " M src/prototypes/text_frontend_backend_agent/config/prompts.yaml",
+          " M src/prototypes/text_frontend_backend_agent/delegation.py"
+        ]
+      },
+      "agent_yaml_sha256": "578d277e2e4e842e9b5b6652a15d8ce38e4297d867ab19cb3e33f347a38bbc13",
+      "prompts_sha256": "1424011a7f02e46cc9fcbbc5e5a49b1618f1bb868615c0d4cad18fc5eeaf6d4b",
+      "domain_profile_sha256": "b486deb7dc99d032428741503423ad6f548d3009d3a557179754b752e4a76bf0",
+      "backend": {
+        "model": "nvidia/nvidia/nemotron-3-ultra",
+        "base_url": "https://inference-api.nvidia.com/v1",
+        "temperature": 0.0,
+        "max_tokens": 4096,
+        "extra_body": {
+          "chat_template_kwargs": {
+            "enable_thinking": true
+          },
+          "reasoning_budget": 1024
+        }
+      },
+      "max_concurrency": 4,
+      "strict_transport_errors": true
+    }
+  }
+]

@@ -6,8 +6,12 @@
 **Generic Realtime integration:** [`voice-custom-agent-openai-realtime-integration.md`](voice-custom-agent-openai-realtime-integration.md)
 
 This runbook goes from the already running `fba-voice` container to a τ³ voice report for both
-agent variants, **paired** (frontend + backend) and **backend-only**. It ends with every log and
-artifact archived in the dump repository. `src/tau2/` is not modified.
+agent variants, **paired** (frontend + backend) and **backend-only**. It also covers two optional
+paired arms that give the backend the **conversation history** (§4.1; agent plan
+`nemotron-voice-agent-smasurekar/misc/prototypes/frontend-backend-agent-backend-history-plan.md`), and
+one optional paired arm with **identifier normalization** (§4.2; agent plan
+`nemotron-voice-agent-smasurekar/misc/prototypes/voice-frontend-backend-agent-normalization-plan.md`). It
+ends with every log and artifact archived in the dump repository. `src/tau2/` is not modified.
 
 > **Everything from every run goes to
 > `/localhome/local-smasurekar/smasurekar/voice-agent-evaluation-dump/tau-3-voice/`**
@@ -73,6 +77,13 @@ split needs I1 to be in place *before* a run; I1 is live in `fba-voice` and `fba
 |---|---|---|---|---|
 | `paired` | `fba-voice` (already running) | 8765 | `profiles/tau3_eval.yaml` | `logs/fba_voice_events.jsonl`, `logs/fba_filler.jsonl` |
 | `bo` (backend-only) | `fba-voice-bo` (§4) | 8767 | `profiles/backend_only.yaml` | `logs/fba_voice_bo_events.jsonl`, `logs/fba_voice_bo_filler.jsonl` |
+| `hist` (paired, backend history; optional) | `fba-voice-hist` (§4.1) | 8769 | `profiles/tau3_eval_backend_history.yaml` | `logs/fba_voice_hist_events.jsonl`, `logs/fba_voice_hist_filler.jsonl` |
+| `histng` (paired, backend history without the guidance; optional ablation) | `fba-voice-histng` (§4.1) | 8770 | `profiles/tau3_eval_backend_history_noguide.yaml` | `logs/fba_voice_histng_events.jsonl`, `logs/fba_voice_histng_filler.jsonl` |
+| `norm` (paired, identifier normalization; optional) | `fba-voice-norm` (§4.2) | 8771 | `profiles/tau3_eval_normalization.yaml` | `logs/fba_voice_norm_events.jsonl`, `logs/fba_voice_norm_filler.jsonl` |
+| `verdictspk` (paired, frontend barge-in verdict, **audible filler**; optional, not comparable for Pass^1) | `fba-voice-verdictspk` (§4.3) | 8773 | `profiles/tau3_eval_frontend_verdict_speak.yaml` | `logs/fba_voice_verdictspk_events.jsonl`, `logs/fba_voice_verdictspk_filler.jsonl` |
+
+Arm names must not contain `_`: §9 reads the arm from the run name. Port 8768 is kept for the optional
+filler validation container (§6).
 
 Run name = model tag suffix: `fba_voice_<arm>_<domain>_<complexity>`, e.g.
 `fba_voice_paired_airline_regular` ↔ `--audio-native-model pine-fba-voice-paired-airline-regular`.
@@ -94,6 +105,10 @@ docker ps --filter name=nemo-speech --format '{{.Names}} {{.Status}}'   # nemotr
 Expected for the paired arm: `FRONTEND_LLM_MODEL=nvidia/nvidia/nemotron-3.5-lightning` (reasoning off),
 `BACKEND_LLM_MODEL=nvidia/nvidia/nemotron-3-ultra` (reasoning on, budget 1024),
 `FBA_VOICE_EVENT_LOG=logs/fba_voice_events.jsonl`, `FBA_FILLER_LOG=logs/fba_filler.jsonl`.
+
+`tau3_eval.yaml` pins the backend conversation history **off**, so `FBA_BACKEND_HISTORY` in the
+container's environment has no effect on the `paired` arm. Agent code with that flag logs
+`"backend_history": "off"` in every `session_start` of this arm (§5.1).
 
 If `fba-voice` is not running, start it with the agent runbook, §1.
 
@@ -270,8 +285,11 @@ docker restart fba-voice                    # the ./src bind mount is re-read at
 until curl -sf localhost:8765/health >/dev/null; do sleep 5; done; curl -s localhost:8765/health; echo
 ```
 
-Restart `fba-voice-bo` too if it is already running (§4). A run made without I1 still works; its
-report says *derived* backend latency and *combined* tokens (check C2 = WARN).
+Restart `fba-voice-bo`, `fba-voice-hist`, `fba-voice-histng` and `fba-voice-norm` too if they are running
+(§4, §4.1, §4.2).
+Every arm of one comparison must run the same agent code, so restart all of them after any agent change.
+A run made without I1 still works; its report says *derived* backend latency and *combined* tokens
+(check C2 = WARN).
 
 ## 4. Start the backend-only container [agent]
 
@@ -301,16 +319,139 @@ until curl -sf localhost:8767/health >/dev/null; do sleep 5; done; curl -s local
 
 `backend_only.yaml` extends the base config, whose defaults are the τ³ settings (no greeting, client
 tools, filler `log_only`). In backend-only mode no filler is produced and the `FRONTEND_*` lines are
-unused.
+unused. It pins the backend conversation history off (backend-only already keeps its own history).
+
+### 4.1 Optional: start the backend-history containers [agent]
+
+Only for the backend conversation history comparison. The two arms are the paired agent with
+`backend.conversation_history` on:
+
+- `hist` uses `tau3_eval_backend_history.yaml`. It is `tau3_eval.yaml` plus the history (`include: full`)
+  with the behavioural guidance.
+- `histng` uses `tau3_eval_backend_history_noguide.yaml`. It is the same without the guidance
+  (`guidance_key: ""`), which separates the history's effect from the prompt rules' effect.
+
+Both profiles extend `tau3_eval.yaml`, so turn detection, filler and tools are the same as in `paired`.
+Compare them only with a `paired` run made on the **same agent commit**, not with an earlier campaign.
+
+```bash
+cd $AGENT && mkdir -p logs
+fba_voice_start() {   # usage: fba_voice_start <arm> <host port> <profile file name>
+  local arm=$1 port=$2 profile=$3
+  docker compose --profile frontend-backend-agent/single-gpu run --rm -d --name fba-voice-$arm \
+    -p $port:7860 \
+    -v "$PWD/logs:/app/logs" \
+    -e PYTHONPATH=/app/src \
+    -e PIPELINE_TLS=false \
+    -e FRONTEND_LLM_BASE_URL=https://inference-api.nvidia.com/v1 \
+    -e FRONTEND_LLM_MODEL=nvidia/nvidia/nemotron-3.5-lightning \
+    -e BACKEND_LLM_BASE_URL=https://inference-api.nvidia.com/v1 \
+    -e BACKEND_LLM_MODEL=nvidia/nvidia/nemotron-3-ultra \
+    -e FBA_VOICE_EVENT_LOG=logs/fba_voice_${arm}_events.jsonl \
+    -e FBA_FILLER_LOG=logs/fba_voice_${arm}_filler.jsonl \
+    frontend-backend-agent-single-gpu \
+    uv run python -m prototypes.voice_frontend_backend_agent.server \
+      --config src/prototypes/voice_frontend_backend_agent/config/profiles/$profile \
+      --port 7860
+  until curl -sf localhost:$port/health >/dev/null; do sleep 5; done; curl -s localhost:$port/health; echo
+}
+fba_voice_start hist   8769 tau3_eval_backend_history.yaml
+fba_voice_start histng 8770 tau3_eval_backend_history_noguide.yaml    # only for the ablation
+```
+
+Both arms produce filler records like `paired` (`log_only`). Each delegated turn also logs a
+`backend_context` event with the history size (`history_groups`, `history_messages`, `request_chars`).
+The backend's prompt tokens grow over a task; watch them with the per-turn latency in §7.2.
+
+### 4.2 Optional: start the normalization container [agent]
+
+> **Since 2026-09-29 normalization is on by default in every τ³ arm** (`tau3_eval.yaml`, everything extending it, and
+> `backend_only.yaml`). `tau3_eval_normalization.yaml` is now an alias of `tau3_eval.yaml`. The separate `norm` arm below
+> is only needed to reproduce the earlier campaigns; a `paired` run on the new default already is the normalized arm.
+
+Only for the identifier normalization comparison. The `norm` arm uses `tau3_eval_normalization.yaml`.
+It is `tau3_eval.yaml` (backend history off) plus the `normalization` section:
+
+- The transcript hook rewrites a spoken user ID ("mia underscore kim underscore four three nine seven")
+  into its lower-case written form (`mia_kim_4397`) for the agent only. The wire keeps the raw ASR text.
+- The tool-argument hook canonicalizes `get_user_details.user_id` (lower case, no stray separators). It
+  answers a malformed ID, or a repeat of an ID tau2 already reported as `not found`, with a local tool
+  result, so the call never reaches tau2.
+
+Compare it only with a `paired` run made on the **same agent commit**.
+
+**First, the offline replay** (agent plan §9.1; no ASR, no LLM, minutes). It applies the profile to the
+recorded event log of an earlier `paired` airline run. The log must not be redacted. Check the plan's
+§9.1 gates before spending a τ³ run:
+
+```bash
+cd $AGENT
+PYTHONPATH=src uv run python -m prototypes.voice_frontend_backend_agent.cli.normalization_replay \
+  --events $DUMP/tau-3-voice/<CAMPAIGN>/fba_voice_paired_airline_regular/agent/events.jsonl \
+  --config src/prototypes/voice_frontend_backend_agent/config/profiles/tau3_eval_normalization.yaml \
+  --out /tmp/norm_replay.jsonl          # summary on stderr; --model <pine tag> filters a shared log
+```
+
+**Replay result, 2026-09-26** (first-order: a local answer would change what happens next), on the
+800 ms / 500 ms paired airline `regular` runs:
+
+| Measure | 800 ms | 500 ms |
+|---|---|---|
+| Tasks with a lookup using the exact user ID | 11 → 30 | 10 → 23 |
+| Wrong-case tasks recovered | 19 / 19 | 13 / 13 |
+| Tasks whose ASR finals contain the exact written ID | 0 → 29 | 0 → 13 |
+| `get_user_details` lookups answered locally (invalid + already failed) | 109 + 3 | 120 + 7 |
+
+A manual review found no rewrite of non-ID speech. Then start the container with the §4.1
+`fba_voice_start` helper (paste its definition first if this is a new shell):
+
+```bash
+cd $AGENT && mkdir -p logs
+fba_voice_start norm 8771 tau3_eval_normalization.yaml
+```
+
+The arm produces filler records like `paired`. It logs `transcript_normalized`, `argument_normalized`,
+`call_answered_locally` (`reason`: `invalid` or `already_failed`) and `local_rounds_exhausted` events.
+`backend_tool_calls` keeps the model's original arguments, so count lookups from the tau2 simulation's
+tool calls, not from that event.
+
+### 4.3 Optional: start the frontend barge-in verdict container, audible filler [agent]
+
+The `verdictspk` arm uses `tau3_eval_frontend_verdict_speak.yaml`. It is `tau3_eval.yaml` plus two keys:
+
+- `barge_in.while_thinking: frontend_verdict`: when the user speaks while a delegated request is still
+  being worked on, the backend keeps working, and the frontend decides from the transcript whether the words
+  only acknowledge the request (`continue`: no restart) or change it (`new`: cancel and merge, as in
+  `paired`). Agent plan:
+  `nemotron-voice-agent-smasurekar/misc/prototypes/voice-frontend-backend-agent-barge-in-frontend-verdict-plan.md`.
+- `filler.mode: speak`: the frontend's filler is spoken, so the τ³ user hears it and can answer it.
+
+Because the filler is audible, this arm is **not** comparable with the silent arms for Pass^1 (§6, §11).
+Compare its interaction metrics, and the `barge_in_verdict`, `thinking_cancelled` and `delegation` counts
+in its event log, with a `paired` run on the same agent commit. Use `--speech-complexity regular`: under
+`control` the user seldom speaks while the agent is thinking.
+
+```bash
+cd $AGENT && mkdir -p logs
+fba_voice_start verdictspk 8773 tau3_eval_frontend_verdict_speak.yaml
+```
+
+Each barge-in during a delegated turn logs `barge_in_review`, `barge_in_verdict` (`verdict`, `reason`) and
+`barge_in_closed`. `thinking_cancelled` then has the reason `frontend_verdict_new` instead of `turn_detected`.
+`barge_in_verdict.reason` can be `same_query`: the frontend sent the running query unchanged, so the guard
+(`barge_in.frontend_verdict.same_query_guard`, on by default) gave `continue` whatever `task` said. Its
+`model_task` field shows the model's raw choice, so report the share of `same_query` verdicts next to the
+other counts.
 
 ## 5. Smoke run: mock domain, one task per arm [tau2]
 
 A helper that makes each run consistent. Paste it into the shell:
 
 ```bash
-tau3_run() {   # usage: [TAU3_TAG=smoke] tau3_run <arm: paired|bo> <domain> <complexity: control|regular> [extra tau2 args...]
+tau3_run() {   # usage: [TAU3_TAG=smoke] tau3_run <arm: paired|bo|hist|histng|norm|verdictspk> <domain> <complexity: control|regular> [extra tau2 args...]
   local arm=$1 domain=$2 cx=$3; shift 3
-  local port; case $arm in paired) port=8765;; bo) port=8767;; *) echo "bad arm"; return 1;; esac
+  local port; case $arm in paired) port=8765;; bo) port=8767;; hist) port=8769;; histng) port=8770;;
+    norm) port=8771;; verdictspk) port=8773;; *) echo "bad arm"; return 1;; esac
   local name=fba_voice_${arm}_${domain}_${cx}${TAU3_TAG:+_$TAU3_TAG}
   local model=pine-fba-voice-${arm}-${domain}-${cx}${TAU3_TAG:+-$TAU3_TAG}
   mkdir -p $TAU2/data/simulations/_consoles
@@ -328,6 +469,8 @@ tau3_run() {   # usage: [TAU3_TAG=smoke] tau3_run <arm: paired|bo> <domain> <com
 }
 ```
 
+Extra arguments are appended after the defaults, so `--num-trials 3` overrides `--num-trials 1`.
+
 The helper calls `tau2_ihub.py` (tau2 plus I0), not `tau2`, so the user's voice comes from the
 Inference Hub. The user LLM is `azure/openai/gpt-5.2` on the Hub, and the judge comes from `.env` (§2.2).
 The console log and the start/end timestamps are kept outside the run directory, so a resumed run
@@ -336,6 +479,9 @@ never overwrites them. They are archived in §9.
 ```bash
 tau3_run paired mock control --num-tasks 1
 tau3_run bo     mock control --num-tasks 1
+tau3_run hist   mock control --num-tasks 1     # only with §4.1; same for histng
+tau3_run norm   mock control --num-tasks 1     # only with §4.2
+tau3_run verdictspk mock control --num-tasks 1 # only with §4.3
 ```
 
 ### 5.1 Gate: check the smoke run before spending more
@@ -352,6 +498,10 @@ tau3_run bo     mock control --num-tasks 1
 | Tool calls went through tau2 | `grep -E 'tool_output_in' $AGENT/logs/fba_voice_events.jsonl \| tail -3` | the `call_id`s appear in the simulation's ticks |
 | Filler was logged and stayed silent (paired) | `tail -2 $AGENT/logs/fba_filler.jsonl` | `"mode": "log_only"`, `"spoken": false` |
 | No filler (backend-only) | `wc -l $AGENT/logs/fba_voice_bo_filler.jsonl 2>/dev/null` | the file is missing or empty |
+| Backend history setting per arm | `grep '"session_start"' $AGENT/logs/<arm event log> \| tail -1` | `"backend_history"` is `"off"` for `paired`, `bo` and `norm`, and `"full"` for `hist`/`histng`. `"backend_history_guidance"` is `"backend_history_guidance_full"` for `hist` and `""` for `histng`. A missing key means the container runs agent code from before the flag: restart it (§3) |
+| Normalization setting per arm | same `session_start` line | Since 2026-09-29 identifier normalization is **on in every arm** (`tau3_eval.yaml` and `backend_only.yaml`): `"normalization"` is `{"transcript": true, "tool_arguments": ["get_user_details.user_id"], "retry_guard": true}`. Containers started before that change, and every run up to campaign `2026-09-28_17-48-40Z_fba-voice`, have `false`, `[]`, `false` in every arm except `norm`: restart the container to pick up the new default. A missing key means agent code from before the feature (§3) |
+| Normalization in use (every arm since 2026-09-29) | `grep -cE '"(transcript_normalized\|argument_normalized\|call_answered_locally)"' $AGENT/logs/fba_voice_norm_events.jsonl` | ≥ 1 on the airline `regular` smoke run (the `mock` domain has no user IDs, so 0 is expected there) |
+| Backend history in use (`hist`, `histng`) | `grep '"backend_context"' $AGENT/logs/fba_voice_hist_events.jsonl \| tail -3` | one per delegated turn; `"include": "full"`; `history_groups` grows from 0 over the task |
 | I1 in place | `grep agent_turn_done $AGENT/logs/fba_voice_events.jsonl \| tail -1` | has `"step"`, `"frontend"` and `"backend"` keys |
 | No agent failures | `docker logs --since "$(head -1 data/simulations/_consoles/fba_voice_paired_mock_control.start)" fba-voice 2>&1 \| grep -Ei "failed\|error\|401" \| head` | nothing relevant |
 | Metrics script | §7.2 with `DOMAIN=mock CX=control` | exit code 0; checks C1–C8 all PASS |
@@ -401,6 +551,31 @@ done
   the helper appends a new `.start` stamp.
 - Don't change the agent config, models or code during a campaign. If something must change, start a
   new `CAMPAIGN` (write a new `_consoles/CAMPAIGN` file, see the top of this runbook).
+- (Optional) **Backend conversation history comparison** (§4.1). Run the arms back to back on the
+  same agent commit: `paired`, `hist`, and `histng` if the ablation is wanted. A single trial can't
+  resolve a 2–3 task difference (the 500 ms and 800 ms campaigns swapped 6 tasks each way), so use
+  `--num-trials 2` or more for all arms of the comparison:
+
+  ```bash
+  for arm in paired hist histng; do
+    tau3_run "$arm" airline regular --num-trials 3
+  done
+  ```
+
+  The agent plan, §8.2, lists what to compare. The main counts are post-login agent failures,
+  repeated writes, retries of IDs that already failed, and backend prompt tokens and latency.
+- (Optional) **Identifier normalization comparison** (§4.2). Run the offline replay first. Then run
+  `paired` and `norm` back to back on the same agent commit, airline `regular`, with `--num-trials 2`
+  or more for both:
+
+  ```bash
+  for arm in paired norm; do
+    tau3_run "$arm" airline regular --num-trials 3
+  done
+  ```
+
+  The agent plan, §9.2, lists what to compare: the login funnel, Pass^1, `too_many_errors` endings,
+  local answers per task and lookups per task. A combined arm with backend history comes later.
 - (Optional) Filler validation run (integration plan §3.4): a third container on port 8768 with
   `filler.mode: speak`, and 5 airline tasks. It is for latency validation only and is **never** part of
   Pass^1.
@@ -439,8 +614,8 @@ from the text agent's `config/agent.yaml` (frontend `enable_thinking: false`; ba
 ```bash
 cd $TAU2
 mkdir -p data/simulations/_metrics/_setup
-for arm in paired bo; do
-  c=fba-voice; [ $arm = bo ] && c=fba-voice-bo
+for arm in paired bo; do            # add hist histng when §4.1 ran, norm when §4.2 ran
+  c=fba-voice; [ $arm != paired ] && c=fba-voice-$arm
   env=$(docker inspect $c --format '{{range .Config.Env}}{{println .}}{{end}}')
   be=$(sed -n 's/^BACKEND_LLM_MODEL=//p' <<<"$env"); fe=$(sed -n 's/^FRONTEND_LLM_MODEL=//p' <<<"$env")
   asr=$(docker logs $c 2>&1 | sed -n 's/.* - ASR asr: .* model=\([^ ]*\) .*/\1/p' | tail -1)
@@ -472,7 +647,10 @@ echo "exit=$?"     # 1 = a check FAILED (listed on stderr and in the report)
 ```
 
 `--run` can be repeated (e.g. one per domain and arm); the arm names `bo`/`backend_only` select the
-backend-only rules. Each run's sessions are picked from the shared log by its model tag and time span,
+backend-only rules, and any other name (`hist`, `histng`, `norm`) gets the paired rules. For the backend history
+comparison, pass `--run`, `--event-log` and `--setup` for `paired`, `hist` and `histng`; for the
+normalization comparison, for `paired` and `norm`. Each arm's event
+log is `$AGENT/logs/fba_voice_<arm>_events.jsonl`; for `paired` it is `fba_voice_events.jsonl`. Each run's sessions are picked from the shared log by its model tag and time span,
 so the log files don't need filtering first. Usage details: `misc/prototypes/fba_voice_eval/README.md`.
 
 The script produces `fba_voice_report.md`: the §7.3 results table, Pass^1, the tau2 interaction metrics, mean/p90 backend
@@ -558,10 +736,9 @@ logs are shared across runs). Run it once per `RUN`:
 
 ```bash
 RUN=fba_voice_paired_airline_regular            # repeat for every run of the campaign
-ARM=$(echo $RUN | cut -d_ -f3)                   # paired | bo
-CONTAINER=$([ "$ARM" = paired ] && echo fba-voice || echo fba-voice-bo)
-EVLOG=$([ "$ARM" = paired ] && echo fba_voice_events.jsonl || echo fba_voice_bo_events.jsonl)
-FLOG=$([ "$ARM" = paired ] && echo fba_filler.jsonl || echo fba_voice_bo_filler.jsonl)
+ARM=$(echo $RUN | cut -d_ -f3)                   # paired | bo | hist | histng | norm
+if [ "$ARM" = paired ]; then CONTAINER=fba-voice; EVLOG=fba_voice_events.jsonl; FLOG=fba_filler.jsonl
+else CONTAINER=fba-voice-$ARM; EVLOG=fba_voice_${ARM}_events.jsonl; FLOG=fba_voice_${ARM}_filler.jsonl; fi
 MODEL=pine-$(echo $RUN | tr '_' '-')
 DEST=$DUMP/tau-3-voice/$CAMPAIGN/$RUN
 mkdir -p $DEST/{tau2,agent/raw,agent/config,metrics,provenance}
@@ -671,6 +848,8 @@ Never copy `.env` files. The steps above record key names only and redact the co
 
 ```bash
 docker stop fba-voice-bo          # --rm removes it
+docker stop fba-voice-hist fba-voice-histng 2>/dev/null   # only if §4.1 started them
+docker stop fba-voice-norm 2>/dev/null                    # only if §4.2 started it
 # fba-voice and nemo-speech: stop per the agent runbook §5 only if nothing else needs them
 ```
 
@@ -680,7 +859,9 @@ docker stop fba-voice-bo          # --rm removes it
 |---|---|
 | tau2 connects to api.openai.com / 401 from OpenAI | the model name must start with `pine-`; `PINE_REALTIME_BASE_URL` must be set (the helper sets it) |
 | `Session configuration failed` | the agent rejected `session.update`; read `docker logs fba-voice` |
-| Sessions from a run missing in the agent log | wrong port for the arm (8765 paired, 8767 backend-only) or the container was restarted with another `FBA_VOICE_EVENT_LOG` |
+| Sessions from a run missing in the agent log | wrong port for the arm (8765 paired, 8767 backend-only, 8769 hist, 8770 histng, 8771 norm, 8773 verdictspk) or the container was restarted with another `FBA_VOICE_EVENT_LOG` |
+| `session_start` has no `backend_history` key | the container runs agent code from before the backend history flag; restart it (§3) and rerun |
+| `hist`/`histng` shows `"backend_history": "off"` | the container was started with the wrong `--config`; check `docker inspect fba-voice-hist --format '{{json .Config.Cmd}}'` |
 | Every turn fails; `agent turn N failed` or `401` in `docker logs` | `NVIDIA_API_KEY` in [agent] `.env` is missing or is not an Inference Hub `sk-...` key |
 | `ELEVENLABS_API_KEY not found` | the run used `uv run tau2 run` instead of `tau2_ihub.py`, so I0 was not installed |
 | `Incorrect API key provided: sk-…` with `Error in backchannel decision` / `interruption decision` | the decision calls went to api.openai.com: I0 was not loaded (plain `tau2 run`). The run finishes anyway, but its user never backchannels or interrupts. Delete it and rerun through `tau2_ihub.py` |
@@ -692,7 +873,7 @@ docker stop fba-voice-bo          # --rm removes it
 | User LLM or judge calls go to Azure / fail with Azure auth errors | the `openai/` prefix is missing: use `openai/azure/openai/gpt-5.2` with `api_base` |
 | Selectivity metrics empty | the run used `--speech-complexity control` |
 | Long dead air, then the simulation ends early | backend latency vs tau2's inactivity limit (`DEFAULT_AUDIO_NATIVE_MAX_INACTIVE_SECONDS = 40`); compare with the backend turn p90 in the report. Report it as an agent result; don't change tau2. |
-| Filler audible in `both.wav` | the container is not running `tau3_eval.yaml` / `backend_only.yaml` (`filler.mode: speak`); the run is invalid for Pass^1 |
+| Filler audible in `both.wav` | the container is not running `tau3_eval.yaml` / `backend_only.yaml` / a `tau3_eval_backend_history*.yaml` / `tau3_eval_normalization.yaml` profile (`filler.mode: speak`); the run is invalid for Pass^1 |
 | Report says backend latency *derived* / tokens *combined only* | I1 not applied before the run (§3); expected for runs made before it existed |
 | The tau2 process dies with `RuntimeError: Not connected to API` (the agent log shows `session closed` with no error) | a long tau2 freeze (a slow user TTS/LLM call inside its tick loop) stopped tau2 from reading the socket, so the agent server's WebSocket keepalive closed it. Fixed on 2026-09-24: `server.ws_ping_interval_s: 0` in `tau3_eval.yaml`/`backend_only.yaml` (agent) and a 15 s timeout on I0's TTS client. If it happens again, check that both containers were restarted after the fix, then rerun the same `tau3_run` command with `--auto-resume`: finished tasks are kept and infrastructure errors are rerun |
 | Airline runs are slow (5–10 min per task) | expected: tau2 freezes its clock during the simulated user's interruption/backchannel decisions and interruption TTS (2–15 s each on the Hub), about 35–47% of each run. There is no faster Hub decision model for this key (`gpt-4.1-mini` is slower, `gpt-4.1-nano` is not enabled) |
@@ -707,5 +888,8 @@ the user simulator TTS (`openai/openai/gpt-4o-mini-tts`, via I0), the user's bac
 decision model (`azure/openai/gpt-4.1`, via I0), the judge and the hallucination-check model
 (`azure/openai/gpt-5.2`), all on the Inference Hub; reasoning settings (frontend off, backend
 on with budget 1024); speech complexity; domains and split; trials; `max_concurrency`; commits of both
-repos and whether either was dirty; whether I1 was in place; the filler TTS estimate being *projected*;
+repos and whether either was dirty; whether I1 was in place; the backend conversation history
+setting of each arm (`off`, or `full` with or without guidance, from `session_start`); the
+normalization setting of each arm (`session_start.normalization`) and, for `norm`, the offline replay
+result; the filler TTS estimate being *projected*;
 failed checks; and the dump path `voice-agent-evaluation-dump/tau-3-voice/<CAMPAIGN>/`.
