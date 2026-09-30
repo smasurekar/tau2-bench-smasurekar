@@ -32,6 +32,24 @@ every log and artifact archived in the dump repository. `src/tau2/` is not modif
 >
 > A run is not finished until it has been archived.
 
+> **MANDATORY: archive every campaign in the dump folder (§9) before you do anything else to the stack.** This
+> covers smoke runs, stopped runs and invalid runs too.
+>
+> - **Archive before restarting or reconfiguring `fdh-voice` or the gateway, or changing agent code.**
+>   `archive.sh` records the *current* container logs, container definition, configs and repo provenance. The
+>   container is started with `--rm`, so after a restart the old logs are gone and the snapshot describes the wrong
+>   stack.
+> - **Finish with `archive.sh --all`, then `archive.sh --reports`, then write `$DUMP/tau-3-voice/$CAMPAIGN/README.md`
+>   (the run card).** Do this before starting a new campaign with `new_campaign.sh`.
+> - **Set `DUMP` on hosts where the default path does not exist.** For example, on the `/localhome/...` host:
+>   `export DUMP=/localhome/local-smasurekar/smasurekar/voice-agent-evaluation-dump`. `archive.sh` fails without it.
+> - **Watch out for `--reports` when several campaigns share `_metrics/`.** It copies *every* `fdh_voice_*` report
+>   folder and the current `_setup/`. Check that `_reports/` holds only this campaign's reports.
+> - **If a campaign was archived late (after a restart):** move the wrong snapshot files into
+>   `_NOT_THIS_RUN_post_restart_snapshot/`. Then add a `PROVENANCE_NOTE.md` giving the real commits and
+>   `config_hash` (from `check_stack.sh` output and `fdh_session_start` in the event log). See
+>   `2026-09-30_07-05-15Z_fdh-voice` for an example.
+
 ## Where commands run
 
 | Tag | Directory |
@@ -467,6 +485,9 @@ is approximate. In addition:
   number.
 
 ## 9. Archive everything in the dump repo [tau2 → dump]
+
+**Mandatory for every campaign, including smoke, stopped and invalid runs.** Archive before any restart of the
+stack; see the note at the top of this runbook.
 
 ```bash
 $E/archive.sh --all             # every fdh_voice_* run started since the campaign began (smoke runs included)
