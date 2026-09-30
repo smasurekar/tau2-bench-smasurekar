@@ -78,6 +78,54 @@ def test_join_prefers_call_ids_and_keeps_the_last_session():
     assert not join.unmatched_sessions and not join.unmatched_sims
 
 
+def _session(session_id, start, end, call_ids=()):
+    records = [{"kind": "session_start", "timestamp": start, "session_id": session_id}]
+    records += [
+        {
+            "kind": "tool_output_in",
+            "timestamp": start + 1,
+            "call_id": c,
+            "session_id": session_id,
+        }
+        for c in call_ids
+    ]
+    records.append({"kind": "session_end", "timestamp": end, "session_id": session_id})
+    return m.Session(
+        session_id=session_id, model="pine-t", start=start, records=records
+    )
+
+
+def test_join_with_overlapping_sessions_prefers_call_ids():
+    # Concurrency 2: sim A (tool calls) was rerun after a discarded attempt; sim B made no
+    # tool calls and overlaps both. The discarded attempt starts after A's kept session
+    # but must not become A's primary, and it must not be taken for B's session either.
+    a = paired_sim(sim_id="A", start=T0, end=T0 + 300, tool_call_ids=frozenset({"a1"}))
+    b = paired_sim(sim_id="B", start=T0 + 100, end=T0 + 400, tool_call_ids=frozenset())
+    sessions = {
+        "kept_a": _session("kept_a", T0 + 5, T0 + 300, ["a1"]),
+        "discarded_a": _session("discarded_a", T0 + 40, T0 + 90),
+        "sess_b": _session("sess_b", T0 + 105, T0 + 400),
+    }
+    join = m.join_sessions([a, b], sessions)
+    assert join.primary == {"A": "kept_a", "B": "sess_b"}
+    assert "discarded_a" in sum(join.retried.values(), [])  # never a primary
+    assert join.method == {"kept_a": "call_id", "discarded_a": "time", "sess_b": "time"}
+    assert not join.unmatched_sessions and not join.unmatched_sims
+
+
+def test_join_time_only_primary_is_the_largest_overlap():
+    # A later session that only grazes a tool-less simulation through the slack must not
+    # become its primary: the session that overlaps the simulation most wins.
+    b = paired_sim(sim_id="B", start=T0 + 100, end=T0 + 400, tool_call_ids=frozenset())
+    sessions = {
+        "sess_b": _session("sess_b", T0 + 105, T0 + 400),
+        "late_attempt": _session("late_attempt", T0 + 410, T0 + 600),
+    }
+    join = m.join_sessions([b], sessions)
+    assert join.primary == {"B": "sess_b"}
+    assert join.retried == {"B": ["late_attempt"]}
+
+
 def test_paired_turns():
     session = m.load_sessions(EVENTS, "pine-t-paired")["sess_paired"]
     direct, delegated, cancelled = m.session_turns(session, backend_only=False)

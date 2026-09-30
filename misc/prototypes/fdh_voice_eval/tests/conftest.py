@@ -1,0 +1,6 @@
+"""Make fdh_logs importable; the tests are offline (no network, no keys, no docker)."""
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))

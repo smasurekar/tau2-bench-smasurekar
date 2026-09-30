@@ -204,34 +204,56 @@ def join_sessions(sims: list[Sim], sessions: dict[str, Session]) -> Join:
     matched: dict[str, list[str]] = defaultdict(list)
     method: dict[str, str] = {}
     unmatched: list[str] = []
-    for session_id, session in sorted(in_run.items(), key=lambda kv: kv[1].start):
-        ids = session.call_ids
-        by_id = [s for s in sims if ids & s.tool_call_ids]
+    ordered = sorted(in_run.items(), key=lambda kv: kv[1].start)
+    # Pass 1: tool call ids identify a session's simulation exactly.
+    for session_id, session in ordered:
+        by_id = [s for s in sims if session.call_ids & s.tool_call_ids]
         if len(by_id) == 1:
             matched[by_id[0].sim_id].append(session_id)
             method[session_id] = "call_id"
-            continue
-        best = max(
-            sims,
-            key=lambda s: _overlap(
-                session.start, session.end, s.start - JOIN_SLACK_S, s.end + JOIN_SLACK_S
-            ),
+    by_call_id = set(matched)
+
+    def window(session: Session, sim: Sim) -> float:
+        return _overlap(
+            session.start, session.end, sim.start - JOIN_SLACK_S, sim.end + JOIN_SLACK_S
         )
-        if (
-            _overlap(
-                session.start,
-                session.end,
-                best.start - JOIN_SLACK_S,
-                best.end + JOIN_SLACK_S,
-            )
-            > 0
-        ):
-            matched[best.sim_id].append(session_id)
-            method[session_id] = "time"
-        else:
+
+    # Pass 2: time windows for the rest. Sessions overlap in time at max_concurrency > 1,
+    # and a discarded attempt (Hub error, hallucination rerun) overlaps its own rerun, so a
+    # simulation without a call-id match is preferred; a session that only overlaps
+    # simulations already matched by call id is an earlier attempt of one of them.
+    for session_id, session in ordered:
+        if session_id in method:
+            continue
+        overlapping = [s for s in sims if window(session, s) > 0]
+        if not overlapping:
             unmatched.append(session_id)
-    primary = {sim_id: ids[-1] for sim_id, ids in matched.items()}
-    retried = {sim_id: ids[:-1] for sim_id, ids in matched.items() if len(ids) > 1}
+            continue
+        open_sims = [s for s in overlapping if s.sim_id not in by_call_id]
+        best = max(open_sims or overlapping, key=lambda s: window(session, s))
+        matched[best.sim_id].append(session_id)
+        method[session_id] = "time"
+    # The primary session is the last call-id match; without one, the time match that
+    # overlaps the simulation most (an earlier attempt only grazes it through the slack).
+    sims_by_id = {s.sim_id: s for s in sims}
+    primary: dict[str, str] = {}
+    retried: dict[str, list[str]] = {}
+    for sim_id, ids in matched.items():
+        by_id = [i for i in ids if method[i] == "call_id"]
+        sim = sims_by_id[sim_id]
+        primary[sim_id] = (
+            by_id[-1]
+            if by_id
+            else max(
+                ids,
+                key=lambda i: _overlap(
+                    in_run[i].start, in_run[i].end, sim.start, sim.end
+                ),
+            )
+        )
+        rest = [i for i in ids if i != primary[sim_id]]
+        if rest:
+            retried[sim_id] = rest
     unmatched_sims = [s.sim_id for s in sims if s.sim_id not in primary]
     return Join(
         primary, retried, method, unmatched, unmatched_sims, len(sessions) - len(in_run)
