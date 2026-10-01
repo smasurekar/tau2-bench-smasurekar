@@ -11,6 +11,14 @@ Every command runs from the τ² repo root:
 cd /localhome/local-smasurekar/smasurekar/tau2-bench-smasurekar
 ```
 
+> **MANDATORY: archive every campaign in the dump repo (step 11) before you report a number.** This covers
+> smoke runs, go/no-go runs, stopped runs and invalid runs too. Copy the whole run folders (`results.json`, the
+> `fba_*` report files, `console.log`), the `fba_report.py` comparison outputs, and provenance into
+> `voice-agent-evaluation-dump/tau-2-text/<UTC start>_<campaign>/` with a `README.md` run card. `data/simulations/`
+> is gitignored and host-local: an unarchived run is lost when the host is cleaned up.
+>
+> A run is not finished until it has been archived.
+
 ---
 
 ## What you are measuring
@@ -354,6 +362,53 @@ Telecom conversations can run past 20 user turns. The paired frontend keeps 20 t
 the prototype's default, so the earliest turns drop out of its context. `fba_per_task.csv` →
 `turns_max` shows which tasks that affected.
 
+## Step 11 — Archive everything in the dump repo (mandatory)
+
+**Mandatory for every campaign, including smoke, stopped and invalid runs.** Archive before you report a number,
+delete a run folder, or reuse the host. `data/simulations/` is gitignored, so the dump repo is the only lasting
+record. Examples: `voice-agent-evaluation-dump/tau-2-text/2026-09-21_04-28-36Z_hermes-text`,
+`.../2026-09-22_06-43-17Z_llm-agent-text`.
+
+```bash
+DUMP=${DUMP:-/home/smasurekar/Desktop/Swapnil/gitlab_repos/voice-agent-evaluation-dump}
+# on the /localhome host: export DUMP=/localhome/local-smasurekar/smasurekar/voice-agent-evaluation-dump
+CAMPAIGN=$(date -u +%Y-%m-%d_%H-%M-%SZ)_fba-text     # UTC start of the campaign's first run
+OUT=$DUMP/tau-2-text/$CAMPAIGN
+mkdir -p $OUT/_reports $OUT/provenance
+
+# 1. Whole run folders: results.json, fba_report.md, fba_metrics.json, fba_per_task.csv, console.log
+for RUN in fba_smoke_paired_mock fba_smoke_backend_only_mock \
+           fba_paired_airline_base_4trials fba_backend_only_airline_base_4trials \
+           llm_agent_ultra_airline_base_4trials; do     # every run of the campaign
+  [ -d data/simulations/$RUN ] && cp -r data/simulations/$RUN $OUT/
+done
+
+# 2. Step-9 comparison outputs
+cp -r misc/prototypes/results/airline_base_4trials* $OUT/_reports/
+
+# 3. Provenance: tau2 and prototype commits plus any uncommitted diff
+git rev-parse HEAD > $OUT/provenance/tau2_commit.txt
+git diff HEAD > $OUT/provenance/tau2_uncommitted.diff
+git -C "${FBA_PROTOTYPE_ROOT:-../nemotron-voice-agent-smasurekar}" rev-parse HEAD > $OUT/provenance/prototype_commit.txt
+git -C "${FBA_PROTOTYPE_ROOT:-../nemotron-voice-agent-smasurekar}" diff HEAD > $OUT/provenance/prototype_uncommitted.diff
+
+# 4. No secrets in the dump. This must print nothing.
+grep -rIlE "sk-[A-Za-z0-9_-]{16,}|nvapi-[A-Za-z0-9_-]{16,}" $OUT
+```
+
+If step 4 prints any file, redact it before committing. For example, the Hermes adapter writes the key into
+`results.json → info.agent_info.llm_args.hermes_args.api_key`:
+`sed -i -E 's/"api_key": *"sk-[A-Za-z0-9_-]+"/"api_key": "<REDACTED>"/g' <file>`.
+
+Then write `$OUT/README.md`, the run card. Include:
+
+- the results table (Pass^1–4, latencies, models, reasoning, user sim, judge, concurrency);
+- the tau2 and prototype commits, and whether either was dirty;
+- what each file in the folder is, and anything missing (for example a lost console log).
+
+Add a row to `$DUMP/tau-2-text/README.md` (agent → dump folder), then commit and push the dump repo. Use the dump
+folder name in the eval tracker's **Eval Dump** column.
+
 ---
 
 ## How to read the numbers
@@ -419,6 +474,7 @@ the prototype's default, so the earliest turns drop out of its context. `fba_per
 - All arms: same user sim, judge, domains, split, trials, and `--max-concurrency`.
 - Keep each run folder whole: `results.json`, the `fba_*` report files, and `console.log`
   (step 5). The console log is the only record of warnings, retries, and progress.
+- The dump folder from step 11 (mandatory). A number without an archived dump isn't reportable.
 - Both models and their `extra_body` (reasoning on/off, budget). The report's Provenance section
   lists them, and `results.json → info.agent_info.llm_args.provenance` has the full record:
   prototype SHA, sha256 of `agent.yaml`, `prompts.yaml`, and the domain profile.
