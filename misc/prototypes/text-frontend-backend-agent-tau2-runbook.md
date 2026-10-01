@@ -17,7 +17,8 @@ cd /localhome/local-smasurekar/smasurekar/tau2-bench-smasurekar
 > `voice-agent-evaluation-dump/tau-2-text/<UTC start>_<campaign>/` with a `README.md` run card. `data/simulations/`
 > is gitignored and host-local: an unarchived run is lost when the host is cleaned up.
 >
-> A run is not finished until it has been archived.
+> A run is not finished until it has been archived. After archiving, delete the local copies: the dump is the
+> only copy kept (step 11).
 
 ---
 
@@ -408,6 +409,22 @@ Then write `$OUT/README.md`, the run card. Include:
 
 Add a row to `$DUMP/tau-2-text/README.md` (agent → dump folder), then commit and push the dump repo. Use the dump
 folder name in the eval tracker's **Eval Dump** column.
+
+**Then delete the local copies. Only the dump is kept.** Once the dump repo is pushed, nothing else needs to stay:
+
+- Delete the archived run folders from `data/simulations/`.
+- Delete the step-9 outputs from `misc/prototypes/results/`.
+- Delete any `/tmp/<run>.console.log`.
+
+Don't keep duplicates in this repo or on the host: voice and long text runs reach several GB. Never commit run
+outputs or reports to this repo. Before deleting, check that the dump copy is complete:
+
+```bash
+for RUN in <runs archived above>; do
+  diff -rq data/simulations/$RUN $OUT/$RUN && rm -rf data/simulations/$RUN
+done
+rm -rf misc/prototypes/results/airline_base_4trials*
+```
 
 ---
 

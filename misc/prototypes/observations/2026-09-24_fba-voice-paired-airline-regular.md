@@ -575,7 +575,7 @@ Agent-side changes. Don't apply them during the current campaign; a change means
 |---|---|
 | Text paired, airline, 4 trials (Pass^1 0.71) | `$TAU2/data/simulations/fba_paired_airline_base_4trials/` (`results.json`, `fba_report.md`, `fba_per_task.csv`) |
 | Text backend-only, airline, 4 trials (Pass^1 0.79) | `$TAU2/data/simulations/fba_backend_only_airline_base_4trials/` |
-| Text summary report | `$TAU2/misc/prototypes/results/airline_base_4trials.md` |
+| Text summary report | `voice-agent-evaluation-dump/tau-2-text/2026-09-23_fba-text/_reports/airline_base_4trials.md` |
 
 ### 7.4 Where artifacts will be written after the run (runbook §7 and §9)
 

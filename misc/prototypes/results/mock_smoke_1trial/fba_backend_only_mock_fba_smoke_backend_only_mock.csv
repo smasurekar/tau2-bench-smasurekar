@@ -1,3 +1,0 @@
-task_id,trials,reward_mean,turns_mean,turns_max,frontend_prompt_tokens,frontend_completion_tokens,frontend_reasoning_tokens,frontend_total_tokens,backend_prompt_tokens,backend_completion_tokens,backend_reasoning_tokens,backend_total_tokens
-create_task_1,1,1.0,2.0,2,0.0,0.0,0.0,0.0,3495.0,326.0,223.0,3821.0
-create_task_1_with_env_assertions,1,1.0,2.0,2,0.0,0.0,0.0,0.0,4828.0,681.0,468.0,5509.0
