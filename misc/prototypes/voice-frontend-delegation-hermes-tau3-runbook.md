@@ -4,6 +4,10 @@
 `nemo-speech`), and the agent runbook's §6 smoke run (`fdh_voice_dlg_mock_control_smoke`) finished clean. On that run,
 `report.sh` and `archive.sh` were dry-run into `/tmp`: C1–C5, C7 and C8 PASS, C6 FAILs by design, and the exact join
 matched 1/1 ·
+**Updated 2026-10-05:** the default arm is now **`geval`**, the domain-agnostic profile (`profiles/realtime_eval.yaml`
+with `gateway.eval.yaml`; agent runbook §6.2 and `tau3-voice-domain-specific-changes-genericization.md` in the agent
+repo). The scripts check its profile, gateway config and logs; `dlg` and `silentack` remain as historical arms. The
+stack runs `geval` (checked with `check_stack.sh`: READY); no `geval` run has been made yet ·
 **Scripts:** [`fdh_voice_eval/`](fdh_voice_eval/README.md) ·
 **Agent runbook (starting the stack):** `nemotron-voice-agent-smasurekar/misc/prototypes/frontend-delegation-hermes/runbook.md` ·
 **Agent design:** `nemotron-voice-agent-smasurekar/misc/prototypes/frontend-delegation-hermes/prototype-plan.md` ·
@@ -88,7 +92,7 @@ per-turn records `fba_voice_metrics.py` reads.
 
 **How this agent differs from the FBA arms. Read this before comparing numbers:**
 
-| | FBA `paired` (reference runbook) | **This agent (`dlg`)** |
+| | FBA `paired` (reference runbook) | **This agent (`geval`, `dlg`)** |
 |---|---|---|
 | Frontend | nemotron-3.5-lightning, filler **`log_only` (silent)** | nemotron-3.5-lightning, one `delegate(delegate, filler_text, request)` call per turn; filler **spoken** (`speak_when_delegating: true`) |
 | Backend | nemotron-3-ultra, one call per turn, in the voice container | a **Hermes `AIAgent`** (nemotron-3-ultra, reasoning on, budget 1024), one worker process per session, behind the host gateway; it can be steered, redirected or asked for status mid-task |
@@ -98,6 +102,11 @@ per-turn records `fba_voice_metrics.py` reads.
 - **Pass^1 is not comparable with the silent-filler FBA arms**, because the τ³ user hears the filler and can answer
   it. It *is* comparable with the FBA `verdictspk` arm (also spoken). For a silent-filler comparison, run the
   optional `silentack` arm (§3).
+- **Not comparable with campaigns before 2026-10-05.** The agent's prompts changed for every arm on that date:
+  the telecom phone note became a `<phone_numbers>` block in every domain, the recovery notes were reworded and
+  renamed, and the prompt examples use invented values. `geval` also derives its tool-argument rules, result-hint
+  targets and spelling-hold patterns from each session's tool schemas. Start a new campaign
+  (`new_campaign.sh --force`) and compare only runs made on the same agent commit.
 - **Latencies are not comparable with concurrency-1 campaigns.** At concurrency 4, four sessions share one voice
   container, one `nemo-speech`, the gateway and the Hub endpoints. The FBA campaign
   `2026-09-29_04-32-39Z_fba-voice` also ran at concurrency 4.
@@ -105,17 +114,25 @@ per-turn records `fba_voice_metrics.py` reads.
 **Arms and run names.** Every run uses its own `pine-` model tag. The agent logs the tag in `session_start.model`,
 which is how the logs of different runs are told apart in the shared log files.
 
-| Arm | Container | Port | Agent profile | Event log (host path under [agent]) |
-|---|---|---|---|---|
-| `dlg` | `fdh-voice` (already running) | 8775 | `profiles/tau3_eval.yaml` (filler spoken) | `logs/fdh_voice_events.jsonl` |
-| `silentack` (optional ablation, §3) | `fdh-voice-silentack` | 8777 | `profiles/tau3_eval_silent_ack.yaml` (filler of a delegated turn not spoken) | `logs/fdh_voice_silentack_events.jsonl` |
+| Arm | Container | Port | Agent profile | Gateway config | Event logs (host paths under [agent]) |
+|---|---|---|---|---|---|
+| **`geval`** (default) | `fdh-voice` (already running) | 8775 | `profiles/realtime_eval.yaml` (domain-agnostic, filler spoken) | `gateway.eval.yaml` | `logs/fdh_voice_events.realtime_eval.jsonl`, `logs/fdh_gateway_events.realtime_eval.jsonl` |
+| `dlg` (historical) | `fdh-voice` | 8775 | `profiles/tau3_eval.yaml` (filler spoken) | `gateway.yaml` | `logs/fdh_voice_events.jsonl`, `logs/fdh_gateway_events.jsonl` |
+| `silentack` (optional ablation, §3) | `fdh-voice-silentack` | 8777 | `profiles/tau3_eval_silent_ack.yaml` (filler of a delegated turn not spoken) | `gateway.yaml` | `logs/fdh_voice_silentack_events.jsonl`, `logs/fdh_gateway_events.jsonl` |
 
-Both arms share the gateway (`logs/fdh_gateway_events.jsonl`, `logs/fdh_workers/`). Every gateway record and worker
-log file is keyed by the voice session id (`sess_…`). The per-arm settings live in `fdh_lib.sh` (`fdh_port`,
-`fdh_container`, `fdh_profile`, `fdh_event_log`).
+`geval` and `dlg` use the same container and port, so only one of them runs at a time. One gateway serves every
+running arm, so arms that need different gateway configs (`geval` and `silentack`) cannot run together. Worker
+logs go to `logs/fdh_workers/`. Every gateway record and worker log file is keyed by the voice session id
+(`sess_…`). The per-arm settings live in `fdh_lib.sh` (`fdh_port`, `fdh_container`, `fdh_profile`,
+`fdh_event_log`, `fdh_gateway_config`, `fdh_gateway_log`). `FDH_ARM` sets the default arm (`geval`), and
+`FDH_GATEWAY_LOG` overrides the gateway log.
+
+To start the `geval` stack, follow the agent runbook §6.2: §3 with `FDH_GATEWAY_CONFIG=gateway.eval.yaml` and
+`FDH_GATEWAY_LOG=logs/fdh_gateway_events.realtime_eval.jsonl`, and §4 with `FDH_PROFILE=realtime_eval.yaml` and
+`-e FDH_EVENT_LOG=logs/fdh_voice_events.realtime_eval.jsonl`.
 
 Run name = model tag suffix: `fdh_voice_<arm>_<domain>_<complexity>[_<TAU3_TAG>]`, e.g.
-`fdh_voice_dlg_airline_regular` ↔ `pine-fdh-voice-dlg-airline-regular`. Arm names must not contain `_`: the scripts
+`fdh_voice_geval_airline_regular` ↔ `pine-fdh-voice-geval-airline-regular`. Arm names must not contain `_`: the scripts
 read the arm from the third `_` field. (`banking_knowledge` contains a `_`; it is the domain, after the arm, so
 that is fine.)
 
@@ -136,18 +153,21 @@ Don't raise the concurrency without raising all three.
 the commits to record. It is read-only:
 
 ```bash
-$E/check_stack.sh               # add `silentack` as an argument when §3 is running: check_stack.sh dlg silentack
+$E/check_stack.sh               # the default arm (geval); for the historical arms: check_stack.sh dlg [silentack]
 ```
 
 What it checks (`PASS` / `WARN` / `FAIL`; exit 1 on any FAIL):
 
 | Area | Checks |
 |---|---|
-| Voice server | `/health` ok with `prototype: frontend-delegation-hermes`; `max_sessions` ≥ 4; backend link `websocket`; the container runs the arm's profile (`profiles/tau3_eval.yaml`); `FDH_EVENT_LOG` is the expected file; ASR model and `max_streams` |
-| Gateway | `/health` ok; `agent_kind: hermes`; backend model and reasoning; `max_sessions` ≥ the voice servers' total |
+| Voice server | `/health` ok with `prototype: frontend-delegation-hermes`; `max_sessions` ≥ 4; backend link `websocket`; the container runs the arm's profile (`profiles/realtime_eval.yaml` for `geval`); `FDH_EVENT_LOG` is the arm's file; ASR model and `max_streams` |
+| Gateway | `/health` ok; `agent_kind: hermes`; backend model and reasoning; the process runs the arm's gateway config (`gateway.eval.yaml` for `geval`) and its `FDH_GATEWAY_LOG`; `/health` `backend_features`, `domains` and `backend_catalog_sha256` equal what that config declares (loaded with the agent's own loader; for `geval`: `phone_format` true, `domain_notes` false, `domains: []`); `max_sessions` ≥ the voice servers' total |
 | Speech and browser | `nemo-speech` running. **WARN** if `fdh-voice-web` is running |
 | tau2 | I0 files; `OPENAI_API_KEY`, `TAU2_JUDGE_MODEL` and `TAU2_JUDGE_BASE_URL`; pyaudio; rank_bm25; the §2.3 join fix; campaign set; dump folder exists |
 | Provenance | commit and dirty-file count of the agent, tau2 and Hermes repos |
+
+**`geval`, 2026-10-05:** every row passed (`READY`) on the stack started per the agent runbook §6.2. `CAMPAIGN`
+still named the 2026-10-01 campaign: start a new one before the first `geval` run.
 
 **First run on 2026-09-29:** every agent-stack row passed. It flagged `fdh-voice-web` running (WARN), and it
 failed on rank_bm25 and the join fix until §2.1 and §2.3 are done.
@@ -168,8 +188,9 @@ Notes:
 - If anything is not running, start it with the agent runbook: §2 `nemo-speech`, §3 the gateway, §4 `fdh-voice`.
 
 **After any agent code or config change**, restart `fdh-voice` (and `fdh-voice-silentack`); `src/` is bind-mounted
-and re-read at process start. Restart the gateway too if anything under `backend/`, `sidecar/`, `worker/` or
-`gateway.yaml` changed. Every run of one campaign must use the same agent code: after a change, start a new
+and re-read at process start. Restart the gateway too if anything under `backend/`, `sidecar/` or `worker/`, a
+`gateway*.yaml` file or `prompts.backend.yaml` changed. `check_stack.sh` fails the `/health` row when the running
+gateway no longer matches its config. Every run of one campaign must use the same agent code: after a change, start a new
 campaign (`new_campaign.sh --force`). Run the unit tests first:
 
 ```bash
@@ -251,9 +272,10 @@ until curl -sf localhost:8777/health >/dev/null; do sleep 5; done
 cd $TAU2 && $E/check_stack.sh dlg silentack
 ```
 
-`fdh-voice-web` must be stopped (§1): 4 + 4 sessions fill the gateway's 8. Running both arms at the same time
-also doubles the load on `nemo-speech` and the Hub. Run the two arms **back to back**, not in parallel, if their
-latencies are to be compared.
+`silentack` pairs with `gateway.yaml`, so it cannot run next to `geval` (one gateway, one config): run it with
+`dlg` on the historical stack. `fdh-voice-web` must be stopped (§1): 4 + 4 sessions fill the gateway's 8.
+Running both arms at the same time also doubles the load on `nemo-speech` and the Hub. Run the two arms **back to
+back**, not in parallel, if their latencies are to be compared.
 
 ## 4. The scripts [tau2]
 
@@ -266,7 +288,7 @@ usage.
 | `apply_join_fix.sh` | the §2.3 fix |
 | `new_campaign.sh [label] [--force]` | writes `_consoles/CAMPAIGN_FDH` |
 | `run.sh <arm> <domain> <cx> [tau2 args]` | one run (below) |
-| `campaign.sh [--arm A] [--cx C] [domain...] [-- tau2 args]` | runs domain by domain (default: the four domains, `dlg`, `regular`) |
+| `campaign.sh [--arm A] [--cx C] [domain...] [-- tau2 args]` | runs domain by domain (default: the four domains, `geval`, `regular`) |
 | `status.sh [run...]` | progress. No argument = every run of the campaign |
 | `report.sh [--arms A[,B]] [--cx C] [--tag T] [domain...]` | the full report (§7) |
 | `archive.sh <run>... \| --all \| --reports` | archiving (§9) |
@@ -291,16 +313,19 @@ required: the exact join (§7) reads each simulation's `task.log`.
 - counts of disconnects, hallucination reruns, tracebacks and failed LLM calls;
 - agent-side counts for the run's sessions: sessions, open sessions, decisions, delegations, frontend repairs,
   backend runs by status, backend actions (start/continue/steer/status), tool outputs, spoken status updates,
-  barge-ins, backend errors, gateway session opens and all-time `capacity_refused`;
+  barge-ins, backend errors, gateway session opens and all-time `capacity_refused` (from the arm's gateway log);
+- normalization counts: `argument_normalized`, `answered_locally` by reason, `result_hints`, `session_rules` (one
+  per session with `geval`) and `tools_sha256`, the distinct tool-schema hashes (one per domain);
 - the voice server and gateway `/health`.
 
 ## 5. Smoke runs [tau2]
 
-Start a campaign (`new_campaign.sh`), then (all `regular`):
+Start a campaign (`new_campaign.sh`, or `new_campaign.sh --force` to replace an older campaign), then (all
+`regular`):
 
 ```bash
-TAU3_TAG=smoke $E/run.sh dlg mock regular --num-tasks 1     # concurrency 1
-TAU3_TAG=smoke $E/run.sh dlg airline regular --num-tasks 4  # concurrency 4: the first 4 tasks at the same time
+TAU3_TAG=smoke $E/run.sh geval mock regular --num-tasks 1     # concurrency 1
+TAU3_TAG=smoke $E/run.sh geval airline regular --num-tasks 4  # concurrency 4: the first 4 tasks at the same time
 ```
 
 Two earlier mock runs used `control` and are not part of the reported results:
@@ -314,13 +339,13 @@ and airline runs don't exercise: telecom has user-side device tools, and banking
 and a much larger tool set.
 
 ```bash
-for d in retail telecom banking_knowledge; do TAU3_TAG=smoke $E/run.sh dlg $d regular --num-tasks 1; done
+for d in retail telecom banking_knowledge; do TAU3_TAG=smoke $E/run.sh geval $d regular --num-tasks 1; done
 ```
 
 Then report the smoke runs (one report for all five, `regular`):
 
 ```bash
-$E/report.sh --tag smoke mock airline retail telecom banking_knowledge     # -> _metrics/fdh_voice_dlg_regular_smoke/
+$E/report.sh --tag smoke mock airline retail telecom banking_knowledge     # -> _metrics/fdh_voice_geval_regular_smoke/
 ```
 
 ### 5.1 Gate: check each smoke run before spending more
@@ -338,7 +363,9 @@ $E/report.sh --tag smoke mock airline retail telecom banking_knowledge     # -> 
 | Listen to it | `data/simulations/$RUN/artifacts/task_*/sim_*/audio/both.wav` | a spoken filler ("Sure, let me check…") then the answer; no long dead air |
 | Agent saw the run | `status.sh $RUN` → `sessions` | = number of tasks (more if tau2 retried); `open_sessions` 0 after the run |
 | Hermes backend, not the fake | `check_stack.sh` | gateway `agent_kind hermes` |
-| Normalization on | `grep "\"model\": \"$MODEL\"" $(fdh_event_log dlg) \| tail -1` | `"normalization": {"transcript": true, "tool_arguments": ["get_user_details.user_id"], "retry_guard": true}` |
+| Normalization on | `grep "\"model\": \"$MODEL\"" $(fdh_event_log geval) \| tail -1` | `"normalization": {"transcript": true, "tool_arguments": ["auto"], "retry_guard": true}` (`dlg`: `["get_user_details.user_id"]`) |
+| Schema-derived rules (`geval`) | `status.sh $RUN` → `session_rules`, `tools_sha256`; the rules: `grep session_rules $(fdh_event_log geval) \| grep <a session id>` | `session_rules` = `sessions`; one `tools_sha256` per domain. Rules: airline `get_user_details.user_id`, `get_reservation_details.reservation_id`; retail `get_user_details.user_id`, `get_order_details.order_id`, `get_product_details.product_id`, `get_item_details.item_id`; telecom, banking_knowledge and mock none. Spelling-hold patterns: airline `^[A-Z0-9]{6}$`; retail `^#?[A-Z]\d{7}$`, `^\d{10}$`; the others none (agent repo `tests/unit/prototypes/delegation/fixtures/schema_rules_snapshot.json`) |
+| Deployed fingerprint | in [agent]: `PYTHONPATH=src uv run python -m prototypes.voice_delegation_hermes_agent.cli.fingerprint_check <the run's sessions from agent/events.jsonl or the event log> --profile src/prototypes/voice_delegation_hermes_agent/config/profiles/realtime_eval.yaml --gateway-config src/prototypes/voice_delegation_hermes_agent/config/gateway.eval.yaml` | `fingerprint: OK` (one log per domain, since `session_tools_sha256` differs by domain) |
 | Tool calls went through tau2 | `report.sh` adapter step | adapter exit 0 (no orphaned tool call) |
 | Concurrent workers | `status.sh $RUN` → `gateway`, and `grep -E '"event": "(session_open\|capacity_refused)"' $AGENT/logs/fdh_gateway_events.jsonl \| tail` | 4 `session_open` close together in time (airline smoke); `gateway_capacity_refused_all_time` unchanged |
 | No agent failures | `docker logs --since "$(head -1 $FDH_CONSOLES/$RUN.start)" fdh-voice 2>&1 \| grep -Ei " failed\|error\|\b401\b" \| head` | nothing relevant |
@@ -367,7 +394,7 @@ The reportable condition is **`regular`**, because Selectivity needs it. Use the
 ```bash
 tmux new -s fdh
 # inside tmux, in [tau2]:
-misc/prototypes/fdh_voice_eval/campaign.sh          # airline retail telecom banking_knowledge, dlg, regular
+misc/prototypes/fdh_voice_eval/campaign.sh          # airline retail telecom banking_knowledge, geval, regular
 ```
 
 In another shell, watch progress with `$E/status.sh` (every run of the campaign). `campaign.sh` writes
@@ -386,18 +413,21 @@ latency differs, so re-estimate from the airline smoke (§5).
 
 - **Resume:** rerun the same command. The same run name resumes, and a new `.start` stamp is appended. Add
   `--auto-resume` to rerun infrastructure errors and keep finished tasks:
-  `$E/run.sh dlg retail regular --auto-resume`, or `$E/campaign.sh retail telecom -- --auto-resume`.
+  `$E/run.sh geval retail regular --auto-resume`, or `$E/campaign.sh retail telecom -- --auto-resume`.
 - **Don't change the agent config, models or code, or the gateway, during a campaign.** If something must change,
   start a new campaign.
-- **`silentack` (optional, §3):** after `dlg`, on the same agent commit: `$E/campaign.sh --arm silentack`.
+- **One frozen profile for every domain.** `geval` runs the same profile and gateway config in all four domains;
+  don't switch profiles, prompt features or environment between domains.
+- **`dlg` and `silentack` (historical, §3):** only on the historical stack (`tau3_eval.yaml` with `gateway.yaml`),
+  on the same agent commit: `$E/campaign.sh --arm dlg`, then `$E/campaign.sh --arm silentack`.
 - **Speech complexity is `regular` for every run.** Don't pass `--cx control` to `campaign.sh` or `control` to
   `run.sh`.
 
 ## 7. Compute the metrics [tau2]
 
 ```bash
-$E/report.sh                                 # dlg, regular, the four domains -> _metrics/fdh_voice_dlg_regular/
-$E/report.sh --arms dlg,silentack            # the silentack comparison     -> _metrics/fdh_voice_dlg-silentack_regular/
+$E/report.sh                                 # geval, regular, the four domains -> _metrics/fdh_voice_geval_regular/
+$E/report.sh --arms dlg,silentack            # the historical silentack comparison -> _metrics/fdh_voice_dlg-silentack_regular/
 ```
 
 It prints the results table at the end, and it exits 1 when the adapter, an unexpected check or the exact join
@@ -414,8 +444,9 @@ fails. Every output is still written. The steps, in order:
    - the frontend model from the container env;
    - the backend model from the gateway `/health`;
    - ASR and TTS from the container's `ASR/TTS channel ready` log lines;
-   - the reasoning settings from `gateway.yaml` (`hermes.request_overrides`) and `delegation_agent.yaml`
-     (`frontend.llm.extra_body`). Re-check them if either file changed.
+   - the reasoning settings from `gateway.yaml` (`hermes.request_overrides`; `gateway.eval.yaml` extends it and
+     does not change them) and `delegation_agent.yaml` (`frontend.llm.extra_body`). Re-check them if either file
+     changed.
 
    If the container is gone, it keeps an existing record.
 3. **`fba_voice_metrics.py`**, with one `--run` per domain whose run directory exists. It writes
@@ -431,7 +462,7 @@ fails. Every output is still written. The steps, in order:
    | C3 exact vs derived backend latency | PASS |
    | C4 agent tokens vs tau2 `agent_usage` | PASS, or WARN when the user barged in (a cut-off response's usage never reaches tau2) |
    | C5 agent failures | PASS, or WARN with a count: read them in `docker logs` |
-   | **C6 filler mode `log_only`** | **FAIL by design** (`speak`) for `dlg`. For `silentack`, report what C6 says |
+   | **C6 filler mode `log_only`** | **FAIL by design** (`speak`) for `geval` and `dlg`. For `silentack`, report what C6 says |
    | C7 filler records present | PASS |
    | C8 terminations | PASS (`user_stop`/`agent_stop`); `too_many_errors` or inactivity endings are agent results, but list them |
 
@@ -453,15 +484,15 @@ fails. Every output is still written. The steps, in order:
    (reference runbook §7.3). Report the measured filler latency next to the script's *projected* one.
 
 **Pass^1 and the tau2 interaction metrics alone** don't need any of this: use the reference runbook §7.1 with
-`RUN=fdh_voice_dlg_<domain>_regular`.
+`RUN=fdh_voice_geval_<domain>_regular`.
 
 The helpers behind steps 4–6 are `fdh_logs.py checks | exact-join | filler`, and they can be run on their own. For
 example, to rerun them on archived copies:
 
 ```bash
-python3 $E/fdh_logs.py exact-join data/simulations/fdh_voice_dlg_airline_regular --join $FDH_METRICS/fdh_voice_dlg_regular/join.csv
-python3 $E/fdh_logs.py filler $DUMP/tau-3-voice/$CAMPAIGN/fdh_voice_dlg_airline_regular/agent/events.jsonl \
-  --join $DUMP/tau-3-voice/$CAMPAIGN/_reports/fdh_voice_dlg_regular/join.csv
+python3 $E/fdh_logs.py exact-join data/simulations/fdh_voice_geval_airline_regular --join $FDH_METRICS/fdh_voice_geval_regular/join.csv
+python3 $E/fdh_logs.py filler $DUMP/tau-3-voice/$CAMPAIGN/fdh_voice_geval_airline_regular/agent/events.jsonl \
+  --join $DUMP/tau-3-voice/$CAMPAIGN/_reports/fdh_voice_geval_regular/join.csv
 ```
 
 ## 8. How to read the numbers
@@ -478,9 +509,15 @@ is approximate. In addition:
 - **Status and steer turns.** A turn with outcome `status` or `steer` in `fba_voice_per_turn.csv` did not start a
   run. Report their counts (from `status.sh`: `backend_actions`, `status_spoken`) next to the latency, since they
   are this agent's mid-task behaviour.
-- **Tool-argument normalization** has rules only for airline's `get_user_details.user_id`. Transcript
-  normalization is on in every domain, but retail (`find_user_id_by_*`), telecom and banking_knowledge have no
-  argument rules or retry guard.
+- **Tool-argument normalization (`geval`)** is derived per session from the tool schemas: rules for read-tool
+  `*_id` arguments whose description quotes an example (airline 2, retail 4, telecom and banking_knowledge none;
+  §5.1), never for write tools. The retry guard covers every tool. Recovery notes are appended to a not-found
+  result that names a user or customer, in every domain (telecom and banking_knowledge included). The backend's
+  `<phone_numbers>` block is in every domain. Transcript normalization is on everywhere. With `dlg` (historical),
+  argument rules and the retry guard cover only `get_user_details.user_id`, and the recovery notes only
+  `find_user_id_by_name_zip`, `find_user_id_by_email` and `get_user_details`.
+- **Reward effect not yet measured.** The `geval` rules are designed to cover the cases the `dlg` rules were made
+  for, but their effect on Pass^1 is unvalidated. Report measured numbers only, and don't claim parity with `dlg`.
 - **banking_knowledge** results depend on `--retrieval-config` (`bm25` by default here). Name it next to every
   number.
 
@@ -492,7 +529,7 @@ stack; see the note at the top of this runbook.
 ```bash
 $E/archive.sh --all             # every fdh_voice_* run started since the campaign began (smoke runs included)
 $E/archive.sh --reports         # the campaign's _metrics reports, _setup, CAMPAIGN_FDH, campaign console outputs
-# or single runs: $E/archive.sh fdh_voice_dlg_airline_regular
+# or single runs: $E/archive.sh fdh_voice_geval_airline_regular
 ```
 
 It only copies; the source logs are shared across runs. Rerun it after late changes; it overwrites the copy. For
@@ -504,9 +541,9 @@ each run it writes:
 | `agent/events.jsonl`, `agent/events.legacy.jsonl` | this run's voice-server sessions (by model tag), before and after the report adapter |
 | `agent/gateway_events.jsonl`, `agent/workers/` | this run's gateway records and Hermes worker logs (`sess_<id>-<n>.log`) |
 | `agent/sessions.txt` | this run's session ids |
-| `agent/raw/` | the full voice and gateway logs as of archiving, gateway stdout |
+| `agent/raw/` | the full voice and gateway logs of the run's arm as of archiving, gateway stdout |
 | `agent/docker_logs.txt`, `agent/nemo_speech_logs.txt` | voice container and ASR/TTS server logs since the run's first start |
-| `agent/config/` | `delegation/` (every profile, `gateway.yaml`, prompts), `voice_agent.yaml`, `prompts.voice.yaml`, the speech catalog, `gateway_health.json` |
+| `agent/config/` | `delegation/` (the whole agent config folder: every profile, voice profile and gateway config, including `realtime_eval.yaml` and `gateway.eval.yaml`, and the prompts), `voice_agent.yaml`, `prompts.voice.yaml`, the speech catalog, `gateway_health.json` |
 | `agent/container_inspect.json` | the container definition, secret-looking env values redacted |
 | `provenance/` | commit, status and uncommitted diff of the agent, tau2 and Hermes repos; `agent_untracked.tgz` (the delegation prototype, untracked in the agent repo); `fdh_voice_eval.tgz` (these scripts, untracked in tau2); `fba_voice_metrics.py` and I0 as used; `.env` key names and judge/TTS endpoints (no values); `agent_llm_env.txt`; `gateway_env.txt` (the gateway process's `BACKEND_LLM_*`/`FDH_*`) |
 
@@ -516,7 +553,7 @@ each run it writes:
 Then write `$DUMP/tau-3-voice/$CAMPAIGN/README.md`, a run card (`archive.sh --reports` reminds you if it is
 missing). Follow `2026-09-29_04-32-39Z_fba-voice/README.md`:
 
-- date and time window, arms, domains, speech complexity, trials;
+- date and time window, arms (with profile and gateway config), domains, speech complexity, trials;
 - **`max_concurrency` per run (1 mock, 4 otherwise)**;
 - `--retrieval-config` for banking_knowledge;
 - models: frontend, backend (Hermes), ASR, TTS, user simulator, judge;
@@ -542,7 +579,7 @@ them with Git LFS (`.gitattributes`). Check with `git -C $DUMP check-attr filter
 ```bash
 cd $DUMP
 git add tau-3-voice/$CAMPAIGN
-git commit -m "tau-3-voice: $CAMPAIGN fdh-voice (dlg airline retail telecom banking_knowledge regular, concurrency 4)"
+git commit -m "tau-3-voice: $CAMPAIGN fdh-voice (geval airline retail telecom banking_knowledge regular, concurrency 4)"
 # git push   (only when you intend to publish the campaign)
 ```
 
@@ -564,7 +601,10 @@ airline tasks). Specific to this agent:
 | Symptom | Check |
 |---|---|
 | `run.sh`: `no campaign` | run `new_campaign.sh` first |
-| Sessions of a run missing in the agent log (`status.sh`: `sessions=0`) | wrong port for the arm (8775 `dlg`, 8777 `silentack`), or the container was started with another `FDH_EVENT_LOG` (`check_stack.sh`) |
+| Sessions of a run missing in the agent log (`status.sh`: `sessions=0`) | wrong port for the arm (8775 `geval`/`dlg`, 8777 `silentack`), the container was started with another `FDH_EVENT_LOG`, or the run used another arm's name than the profile running on 8775 (`check_stack.sh <arm>`) |
+| `check_stack.sh`: `fdh-voice does not run …` or `FDH_EVENT_LOG=…, expected …` | the container runs another arm's profile or log: check the arm (`geval` by default), or restart `fdh-voice` per the agent runbook §6.2 |
+| `check_stack.sh`: `gateway does not run …`, `FDH_GATEWAY_LOG=…, expected …` or `/health does not match` | the gateway runs another config or log, or old code or prompts: restart it per the agent runbook §3 with the arm's `FDH_GATEWAY_CONFIG` and `FDH_GATEWAY_LOG` |
+| `status.sh`: gateway counts empty | the gateway writes another log than the arm's: set `FDH_GATEWAY_LOG`, or restart the gateway with the arm's log |
 | `Session configuration failed` | the server sent `error` on `session.update`; the voice log's `backend_error` has the code. `worker_start_timeout`/`backend_unavailable`: read `logs/fdh_workers/<sess>-*.log` (agent runbook §11) |
 | Infrastructure errors in bursts at concurrency 4; `gateway_capacity_refused_all_time` grows | the gateway's 8 sessions are shared: stop `fdh-voice-web` (§1), and don't run `silentack` alongside `dlg`. Rerun with `--auto-resume` |
 | Voice server refuses a 5th session | `fdh-voice` has `max_sessions: 4`. The concurrency is above 4 (check `TAU3_CONCURRENCY`), or a closing session was still open. Rerun with `--auto-resume` |
@@ -579,7 +619,7 @@ airline tasks). Specific to this agent:
 | `archive.sh`: `gateway_env.txt` empty | the gateway is not running on this host; record its env from the agent runbook §3 command |
 | banking_knowledge: `No module named 'rank_bm25'` | `uv sync --extra voice --extra dev --extra knowledge` (§2.1) |
 | banking_knowledge with `alltools`: embedding or `SandboxRuntimeError` errors | use `bm25` (§2.4), or install the sandbox and a real OpenAI key |
-| Filler never audible in `both.wav` (`dlg`) | the container runs `tau3_eval_silent_ack.yaml` (`check_stack.sh` fails the profile row) |
+| Filler never audible in `both.wav` (`geval`, `dlg`) | the container runs `tau3_eval_silent_ack.yaml` (`check_stack.sh` fails the profile row) |
 
 ## 12. What to record when you report
 
@@ -587,7 +627,7 @@ Record the following next to any number:
 
 - the agent's models: frontend (nemotron-3.5-lightning, reasoning off), backend (Hermes `AIAgent` on nemotron-3-ultra,
   reasoning on, budget 1024), ASR and TTS;
-- the filler is **spoken** (`dlg`) or not (`silentack`);
+- the filler is **spoken** (`geval`, `dlg`) or not (`silentack`);
 - the user simulator LLM (`azure/openai/gpt-5.2`), the user TTS (`openai/openai/gpt-4o-mini-tts`, via I0), the
   decision model (`azure/openai/gpt-4.1`, via I0), and the judge and hallucination-check model (`azure/openai/gpt-5.2`);
 - speech complexity; domains and split; trials;
@@ -595,7 +635,10 @@ Record the following next to any number:
 - the commits of the agent, tau2 and Hermes repos and whether each was dirty (the prototype is untracked in the
   agent repo);
 - that `fba_voice_metrics.py` had the §2.3 join fix, and the exact-join result;
-- the normalization setting (`session_start.normalization`);
+- the arm, its profile and gateway config, and the normalization setting (`session_start.normalization`);
+- the fingerprints: `backend_catalog_sha256`, `backend_system_sha256` and `session_tools_sha256` per domain, and the
+  `fingerprint_check` result;
+- that the reward effect of the domain-agnostic rules is measured by this run, not assumed;
 - the measured filler latency next to the *projected* one;
 - failed checks (C6 by design) and the frontend timeout count;
 - the dump path `voice-agent-evaluation-dump/tau-3-voice/<CAMPAIGN>/`.

@@ -32,7 +32,7 @@ provenance() {  # <dest dir>: commits, status and diffs of the three repos, untr
   git -C "$AGENT" ls-files --others --exclude-standard -z -- src tests misc \
     | grep -zvE -e '__pycache__' -e '\.pyc$' -e '(^|/)\.env' \
     | tar --null -czf "$P/agent_untracked.tgz" -C "$AGENT" -T -
-  # This folder is untracked in tau2 as well.
+  # These helper scripts, as used (tau2's git state is in tau2_*.txt / tau2_uncommitted.diff).
   tar -czf "$P/fdh_voice_eval.tgz" -C "$(dirname "$FDH_EVAL")" --exclude __pycache__ "$(basename "$FDH_EVAL")"
   sed -n 's/^\([A-Z0-9_]*\)=.*/\1/p' "$TAU2/.env" > "$P/tau2_env_keys.txt"
   grep -E '^(TAU2_JUDGE_(MODEL|BASE_URL|JSON_MODE)|TAU2_USER_TTS_(MODEL|BASE_URL))=' "$TAU2/.env" > "$P/tau2_endpoints.txt"
@@ -58,14 +58,14 @@ archive_run() {
 
   # 2. Agent logs: this run's sessions from the voice, legacy and gateway logs; its Hermes worker logs; raw files
   fdh_logs filter "$EV" "$RUN" --legacy "$(fdh_legacy_log "$ARM")" \
-    --gateway "$AGENT/logs/fdh_gateway_events.jsonl" --out "$DEST/agent"
+    --gateway "$(fdh_gateway_log "$ARM")" --out "$DEST/agent"
   local sid n=0
   while read -r sid; do
     [ -n "$sid" ] || continue
     for f in "$AGENT/logs/fdh_workers/$sid"-*.log; do [ -f "$f" ] && cp "$f" "$DEST/agent/workers/" && n=$((n + 1)); done
   done < "$DEST/agent/sessions.txt"
   echo "  worker logs: $n"
-  cp "$EV" "$AGENT/logs/fdh_gateway_events.jsonl" "$AGENT/logs/fdh_gateway.out" "$DEST/agent/raw/" 2>/dev/null
+  cp "$EV" "$(fdh_gateway_log "$ARM")" "$AGENT/logs/fdh_gateway.out" "$DEST/agent/raw/" 2>/dev/null
   SINCE=$(head -1 "$FDH_CONSOLES/$RUN.start" 2>/dev/null)
   if [ -n "$SINCE" ]; then
     docker logs --since "$SINCE" "$CONTAINER" > "$DEST/agent/docker_logs.txt" 2>&1

@@ -21,19 +21,38 @@ export CAMPAIGN=${CAMPAIGN:-$(cat "$FDH_CONSOLES/CAMPAIGN_FDH" 2>/dev/null)}
 
 # The four reportable domains (mock is smoke-only).
 FDH_DOMAINS=(airline retail telecom banking_knowledge)
+# The arm of check_stack.sh, campaign.sh and report.sh when none is given: geval, the domain-agnostic
+# profile (realtime_eval.yaml with gateway.eval.yaml). dlg and silentack are the historical tau3_eval arms.
+export FDH_ARM=${FDH_ARM:-geval}
 
 # -- per-arm settings ----------------------------------------------------------------------------
+# geval and dlg share the container fdh-voice and port 8775: only one of them runs at a time.
 fdh_port() {       # <arm> -> host port of its voice server
-  case $1 in dlg) echo 8775;; silentack) echo 8777;; *) echo "unknown arm: $1 (dlg|silentack)" >&2; return 1;; esac
+  case $1 in geval|dlg) echo 8775;; silentack) echo 8777;; *) echo "unknown arm: $1 (geval|dlg|silentack)" >&2; return 1;; esac
 }
 fdh_profile() {    # <arm> -> the profile its container must run
-  case $1 in dlg) echo profiles/tau3_eval.yaml;; silentack) echo profiles/tau3_eval_silent_ack.yaml;; *) return 1;; esac
+  case $1 in
+    geval) echo profiles/realtime_eval.yaml;; dlg) echo profiles/tau3_eval.yaml;;
+    silentack) echo profiles/tau3_eval_silent_ack.yaml;; *) return 1;;
+  esac
 }
 fdh_container() {  # <arm> -> container name
-  if [ "$1" = dlg ]; then echo fdh-voice; else echo "fdh-voice-$1"; fi
+  case $1 in geval|dlg) echo fdh-voice;; *) echo "fdh-voice-$1";; esac
 }
 fdh_event_log() {  # <arm> -> voice server event log (host path)
-  if [ "$1" = dlg ]; then echo "$AGENT/logs/fdh_voice_events.jsonl"; else echo "$AGENT/logs/fdh_voice_${1}_events.jsonl"; fi
+  case $1 in
+    geval) echo "$AGENT/logs/fdh_voice_events.realtime_eval.jsonl";;
+    dlg) echo "$AGENT/logs/fdh_voice_events.jsonl";;
+    *) echo "$AGENT/logs/fdh_voice_${1}_events.jsonl";;
+  esac
+}
+fdh_gateway_config() { # <arm> -> the gateway config (agent config dir) the arm pairs with
+  if [ "$1" = geval ]; then echo gateway.eval.yaml; else echo gateway.yaml; fi
+}
+fdh_gateway_log() { # <arm> -> gateway event log (host path); FDH_GATEWAY_LOG overrides
+  if [ -n "${FDH_GATEWAY_LOG:-}" ]; then echo "$FDH_GATEWAY_LOG"
+  elif [ "$1" = geval ]; then echo "$AGENT/logs/fdh_gateway_events.realtime_eval.jsonl"
+  else echo "$AGENT/logs/fdh_gateway_events.jsonl"; fi
 }
 fdh_legacy_log() { # <arm> -> report-adapter output of that log
   echo "$FDH_METRICS/_legacy/$(basename "$(fdh_event_log "$1")" .jsonl).legacy.jsonl"
@@ -60,7 +79,7 @@ fdh_logs() {       # the stdlib log helpers (fdh_logs.py)
 # -- one tau2 run --------------------------------------------------------------------------------
 # usage: [TAU3_TAG=smoke] [TAU3_CONCURRENCY=N] [TAU3_RETRIEVAL=bm25] fdh_run <arm> <domain> <cx> [extra tau2 args...]
 fdh_run() {
-  if [ $# -lt 3 ]; then echo "usage: fdh_run <dlg|silentack> <domain> regular [tau2 args...]   (regular for every domain)" >&2; return 2; fi
+  if [ $# -lt 3 ]; then echo "usage: fdh_run <geval|dlg|silentack> <domain> regular [tau2 args...]   (regular for every domain)" >&2; return 2; fi
   local arm=$1 domain=$2 cx=$3; shift 3
   local port; port=$(fdh_port "$arm") || return 2
   local conc; conc=$(fdh_concurrency "$domain")

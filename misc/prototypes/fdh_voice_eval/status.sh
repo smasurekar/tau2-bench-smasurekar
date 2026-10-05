@@ -18,9 +18,9 @@ for n in "${runs[@]}"; do
   [ -f "$log" ] && echo "  disconnects=$(grep -ac 'Not connected to API' "$log") halluc_reruns=$(grep -ac 'Hallucination detected' "$log")" \
     "tracebacks=$(grep -ac Traceback "$log") badLLM=$(grep -acE 'AuthenticationError|Error in (backchannel|interruption) decision|ELEVENLABS_API_KEY not found' "$log")"
   ev=$(fdh_event_log "$arm")
-  [ -f "$ev" ] && echo "  agent: $(fdh_logs status "$ev" "$n" --gateway "$AGENT/logs/fdh_gateway_events.jsonl")"
+  [ -f "$ev" ] && echo "  agent: $(fdh_logs status "$ev" "$n" --gateway "$(fdh_gateway_log "$arm")")"
 done
-for arm in dlg silentack; do
-  port=$(fdh_port $arm); h=$(curl -s -m5 "localhost:$port/health") && echo "voice $arm :$port $h"
+for port in 8775 8777; do   # 8775: geval or dlg (fdh-voice); 8777: silentack
+  h=$(curl -s -m5 "localhost:$port/health") && echo "voice :$port $h"
 done
 echo "gateway $(curl -s -m5 "$FDH_GATEWAY_URL/health")"

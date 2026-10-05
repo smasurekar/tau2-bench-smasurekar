@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # Preflight for the fdh-voice τ³ campaign (runbook §1, §2): agent stack, tau2 setup, provenance.
 # Prints PASS / WARN / FAIL lines; exit 1 on any FAIL. Read-only: it starts and stops nothing.
-# usage: check_stack.sh [arm...]      (default: dlg; add silentack when §3 runs)
+# usage: check_stack.sh [arm...]      (default: $FDH_ARM, i.e. geval; dlg/silentack are the tau3_eval arms)
 set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/fdh_lib.sh"
 case ${1:-} in -h|--help) sed -n '2,4p' "$0"; exit 0;; esac
-arms=("$@"); [ ${#arms[@]} -gt 0 ] || arms=(dlg)
+arms=("$@"); [ ${#arms[@]} -gt 0 ] || arms=("$FDH_ARM")
 fails=0
 pass() { echo "PASS  $*"; }
 warn() { echo "WARN  $*"; }
 fail() { echo "FAIL  $*"; fails=$((fails + 1)); }
-json() { python3 -c "import json,sys; d=json.load(sys.stdin); print(eval(sys.argv[1], {'d': d}))" "$1" 2>/dev/null; }
+json() { python3 -c "import json,sys; d=json.load(sys.stdin); print(eval(sys.argv[1], {'d': d, 'json': json}))" "$1" 2>/dev/null; }
 
 echo "== agent stack"
 wanted=0
@@ -41,6 +41,34 @@ if [ "$(json 'd["ok"]' <<<"$g")" = True ]; then
   pass "gateway $FDH_GATEWAY_URL ok"
   [ "$(json 'd["agent_kind"]' <<<"$g")" = hermes ] && pass "gateway agent_kind hermes" || fail "gateway agent_kind $(json 'd["agent_kind"]' <<<"$g") (not hermes)"
   pass "gateway backend $(json 'd["hermes"]["model"]' <<<"$g") reasoning=$(json 'd["hermes"]["reasoning"]' <<<"$g")"
+  # The gateway's own python process: its --config and FDH_GATEWAY_LOG must be the arms' (one gateway serves all).
+  gpid=$(pgrep -f 'bin/python[0-9.]* -m prototypes\.voice_delegation_hermes_agent\.sidecar\.gateway_server' | tail -1)
+  gcmd=$([ -n "$gpid" ] && tr '\0' ' ' < "/proc/$gpid/cmdline" 2>/dev/null)
+  glog=$([ -n "$gpid" ] && tr '\0' '\n' < "/proc/$gpid/environ" 2>/dev/null | sed -n 's/^FDH_GATEWAY_LOG=//p')
+  for arm in "${arms[@]}"; do
+    gcfg=$(fdh_gateway_config "$arm")
+    if [ -z "$gpid" ]; then warn "gateway process not found on this host: cannot check its config and log for $arm"; break; fi
+    [[ $gcmd == *"/config/$gcfg "* || $gcmd == *"/config/$gcfg" ]] && pass "gateway runs $gcfg ($arm)" \
+      || fail "gateway does not run $gcfg ($arm): $gcmd"
+    [ "$(basename "${glog:-fdh_gateway_events.jsonl}")" = "$(basename "$(fdh_gateway_log "$arm")")" ] \
+      && pass "gateway FDH_GATEWAY_LOG=${glog:-<default>} ($arm)" \
+      || fail "gateway FDH_GATEWAY_LOG=${glog:-<default>}, expected logs/$(basename "$(fdh_gateway_log "$arm")") ($arm)"
+    # /health must report what the config declares: prompt variants, domains, prompt catalog hash.
+    want=$(cd "$AGENT" && PYTHONPATH=src uv run --quiet python - "$gcfg" 2>/dev/null <<'PY'
+import json, sys
+from prototypes.voice_delegation_hermes_agent.sidecar.gateway_config import load_gateway_config
+from prototypes.voice_delegation_hermes_agent.sidecar.templates import BackendTemplates
+g = load_gateway_config(f"src/prototypes/voice_delegation_hermes_agent/config/{sys.argv[1]}")
+t = BackendTemplates(g.hermes.prompts_path, prompt_features=g.prompt_features)
+print(json.dumps({"backend_features": dict(g.prompt_features), "domains": [n for n, _ in g.domains],
+                  "backend_catalog_sha256": t.catalog_sha256}, sort_keys=True))
+PY
+)
+    have=$(json 'json.dumps({k: d.get(k) for k in ("backend_features", "domains", "backend_catalog_sha256")}, sort_keys=True)' <<<"$g")
+    if [ -z "$want" ]; then fail "cannot load $gcfg with the agent's loader (cd \$AGENT; uv sync)"
+    elif [ "$want" = "$have" ]; then pass "gateway /health matches $gcfg: $have"
+    else fail "gateway /health does not match $gcfg (restart the gateway, agent runbook §3): have $have, want $want"; fi
+  done
   gmax=$(json 'd["max_sessions"]' <<<"$g")
   web=0; docker ps --format '{{.Names}}' | grep -qx fdh-voice-web && web=4
   [ $((wanted + web)) -le "$gmax" ] && pass "gateway max_sessions=$gmax >= voice servers ($wanted + web $web)" \

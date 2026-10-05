@@ -194,10 +194,28 @@ def test_run_status(tmp_path: Path, event_log: Path):
     s = fdh_logs.run_status(event_log, MODEL, gateway)
     assert s["sessions"] == 2 and s["open_sessions"] == 0 and s["delegated"] == 2
     assert s["repairs"] == {"timeout": 1} and s["backend_runs"] == {"ok": 2}
+    assert (s["session_rules"], s["tools_sha256"], s["answered_locally"]) == (0, [], {})
     assert (
         s["gateway"] == {"session_open": 1}
         and s["gateway_capacity_refused_all_time"] == 1
     )
+
+
+def test_run_status_counts_schema_rules_and_normalization(tmp_path: Path):
+    records = session("sess_b1", MODEL, 0) + [
+        {"timestamp": 1, "kind": "backend_configured", "session_id": "sess_b1", "session_tools_sha256": "abc"},
+        {"timestamp": 1, "kind": "session_rules", "session_id": "sess_b1", "rules": []},
+        {"timestamp": 2, "kind": "argument_normalized", "session_id": "sess_b1"},
+        {"timestamp": 3, "kind": "call_answered_locally", "session_id": "sess_b1", "reason": "invalid"},
+        {"timestamp": 4, "kind": "result_hint", "session_id": "sess_b1"},
+    ]  # fmt: skip
+    s = fdh_logs.run_status(write_jsonl(tmp_path / "ev.jsonl", records), MODEL)
+    assert (s["session_rules"], s["tools_sha256"], s["argument_normalized"]) == (
+        1,
+        ["abc"],
+        1,
+    )
+    assert (s["answered_locally"], s["result_hints"]) == ({"invalid": 1}, 1)
 
 
 def test_checks_allow_c6(tmp_path: Path):

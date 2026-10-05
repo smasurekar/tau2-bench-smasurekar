@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # The reportable runs, domain by domain (runbook §6). Run it inside tmux.
-# usage: campaign.sh [--arm dlg|silentack] [--cx regular] [domain...]   (default: the four domains, regular: the campaign rule)
+# usage: campaign.sh [--arm geval|dlg|silentack] [--cx regular] [domain...]
+#        (default: --arm $FDH_ARM (geval), the four domains, regular: the campaign rule)
 #        extra tau2 args after `--`, e.g. campaign.sh -- --auto-resume
 set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/fdh_lib.sh"
-arm=dlg cx=regular domains=() extra=()
+arm=$FDH_ARM cx=regular domains=() extra=()
 while [ $# -gt 0 ]; do
   case $1 in
     --arm) arm=$2; shift 2;; --cx) cx=$2; shift 2;;
     --) shift; extra=("$@"); break;;
-    -h|--help) sed -n '2,4p' "$0"; exit 0;;
+    -h|--help) sed -n '2,5p' "$0"; exit 0;;
     *) domains+=("$1"); shift;;
   esac
 done

@@ -10,8 +10,8 @@ is modified.
 
 | File | Role | Runbook |
 |---|---|---|
-| `fdh_lib.sh` | Sourced by every script: paths (overridable), per-arm port/container/log/profile, run and model names, the concurrency rule (1 for `mock`, 4 otherwise), and `fdh_run` | §4 |
-| `check_stack.sh [arm...]` | Read-only preflight: voice server(s), gateway (Hermes), `nemo-speech`, `fdh-voice-web`, I0, `.env` keys, pyaudio, rank_bm25, the join fix, campaign, commits | §1, §2 |
+| `fdh_lib.sh` | Sourced by every script: paths (overridable), per-arm port/container/profile/event log/gateway config/gateway log, the default arm (`FDH_ARM`, `geval`), run and model names, the concurrency rule (1 for `mock`, 4 otherwise), and `fdh_run` | §0, §4 |
+| `check_stack.sh [arm...]` | Read-only preflight: voice server(s) and their profile and event log; gateway (Hermes), its config and event log, and its `/health` against that config (prompt variants, domains, catalog hash); `nemo-speech`, `fdh-voice-web`, I0, `.env` keys, pyaudio, rank_bm25, the join fix, campaign, commits | §1, §2 |
 | `apply_join_fix.sh` | Applies the concurrency-safe session join to `fba_voice_metrics.py` (idempotent), then runs its tests | §2.3 |
 | `new_campaign.sh [label]` | Writes `_consoles/CAMPAIGN_FDH` (refuses to overwrite without `--force`) | top |
 | `run.sh <arm> <domain> <cx> [tau2 args]` | One tau2 run through I0; banking_knowledge gets `--retrieval-config ${TAU3_RETRIEVAL:-bm25}` | §5 |
@@ -23,7 +23,12 @@ is modified.
 | `tests/` | Offline tests for `fdh_logs.py` | — |
 
 Environment overrides (defaults in `fdh_lib.sh`): `TAU2`, `AGENT`, `HERMES`, `DUMP`, `IHUB`, `DOCKER_HOST_IP`,
-`FDH_GATEWAY_URL`, `FDH_CONSOLES`, `FDH_METRICS`, `CAMPAIGN`; per run: `TAU3_TAG`, `TAU3_CONCURRENCY`, `TAU3_RETRIEVAL`.
+`FDH_GATEWAY_URL`, `FDH_GATEWAY_LOG`, `FDH_CONSOLES`, `FDH_METRICS`, `CAMPAIGN`, `FDH_ARM`; per run: `TAU3_TAG`,
+`TAU3_CONCURRENCY`, `TAU3_RETRIEVAL`.
+
+Arms (`fdh_lib.sh`): `geval` (the default) runs `profiles/realtime_eval.yaml` with `gateway.eval.yaml`, the
+domain-agnostic profile. `dlg` (`tau3_eval.yaml`) and `silentack` (`tau3_eval_silent_ack.yaml`) pair with
+`gateway.yaml` and are the historical arms. `geval` and `dlg` share `fdh-voice` on port 8775, so only one runs at a time.
 
 ## Quick start
 
@@ -32,8 +37,8 @@ E=misc/prototypes/fdh_voice_eval
 $E/check_stack.sh                         # fix every FAIL first
 $E/apply_join_fix.sh                      # once
 $E/new_campaign.sh                        # once per campaign
-TAU3_TAG=smoke $E/run.sh dlg mock regular --num-tasks 1   # smoke (concurrency 1; regular everywhere)
-TAU3_TAG=smoke $E/run.sh dlg airline regular --num-tasks 4
+TAU3_TAG=smoke $E/run.sh geval mock regular --num-tasks 1   # smoke (concurrency 1; regular everywhere)
+TAU3_TAG=smoke $E/run.sh geval airline regular --num-tasks 4
 $E/report.sh --tag smoke mock airline
 tmux new -s fdh                           # then, inside tmux in the tau2 checkout:
 misc/prototypes/fdh_voice_eval/campaign.sh   # the four domains at concurrency 4

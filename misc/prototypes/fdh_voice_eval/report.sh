@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # The full report of fdh-voice runs (runbook §7): report adapter, setup record, fba_voice_metrics.py,
 # check summary (C6 may FAIL by design), exact join against task.log, measured filler latency.
-# usage: report.sh [--arms dlg[,silentack]] [--cx regular|control] [--tag TAG] [--out NAME] [domain...]
-#        (default: --arms dlg --cx regular, the four domains; domains without a run directory are skipped)
-# e.g.   report.sh --tag smoke airline          -> _metrics/fdh_voice_dlg_regular_smoke/
+# usage: report.sh [--arms geval|dlg[,silentack]] [--cx regular|control] [--tag TAG] [--out NAME] [domain...]
+#        (default: --arms $FDH_ARM (geval) --cx regular, the four domains; domains without a run directory are skipped)
+# e.g.   report.sh --tag smoke airline          -> _metrics/fdh_voice_geval_regular_smoke/
 #        report.sh --tag smoke mock airline retail telecom banking_knowledge   (the smoke report)
 # Exit 1 when the adapter, an unexpected check, or the exact join fails; every output is still written.
 set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/fdh_lib.sh"
-arms=dlg cx=regular tag="" out="" domains=()
+arms=$FDH_ARM cx=regular tag="" out="" domains=()
 while [ $# -gt 0 ]; do
   case $1 in
     --arms) arms=$2; shift 2;; --cx) cx=$2; shift 2;; --tag) tag=$2; shift 2;; --out) out=$2; shift 2;;

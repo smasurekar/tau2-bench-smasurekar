@@ -207,6 +207,27 @@ def run_status(
         "status_spoken": kinds["status_spoken"],
         "barge_in": kinds["barge_in"],
         "backend_error": kinds["backend_error"],
+        # Tool-argument normalization and recovery notes (every profile with client tools).
+        "argument_normalized": kinds["argument_normalized"],
+        "answered_locally": dict(
+            Counter(
+                r.get("reason")
+                for r in mine
+                if r.get("kind") == "call_answered_locally"
+            )
+        ),
+        "result_hints": kinds["result_hint"],
+        # Schema-derived rules (realtime_eval.yaml): one session_rules event per session, and one
+        # tool-schema hash per domain.
+        "session_rules": kinds["session_rules"],
+        "tools_sha256": sorted(
+            {
+                str(r["session_tools_sha256"])
+                for r in mine
+                if r.get("kind") == "backend_configured"
+                and r.get("session_tools_sha256")
+            }
+        ),
     }
     if gateway_log is not None and gateway_log.exists():
         gateway = Counter(
