@@ -11,6 +11,9 @@ Subcommands:
 * ``filler``        measured filler and answer first-audio latency per run
 * ``status``        agent-side progress counts of one run
 * ``checks``        summarise ``fba_voice_metrics.json`` checks; exit 1 on an unexpected FAIL
+* ``ratelimit``     the 429 gate (P0.1 of the agent's ``tau3-geval-failure-fixes-plan.md``): backend
+                    rate-limit hits per run from the Hermes worker logs, and the backend-run p90;
+                    exit 1 when any session of a run was throttled (the run is invalid)
 * ``campaign-runs`` run names started since the campaign began (from ``_consoles/*.start``)
 """
 
@@ -119,6 +122,59 @@ def primary_sessions(join_csv: Path) -> dict[str, set[str]]:
             if row["role"] == "primary":
                 runs[row["run"]].add(row["session_id"])
     return runs
+
+
+#: A Hermes worker log line of a backend rate limit: the 429 itself, or the retry wait it causes.
+RATE_LIMIT_MARKERS = ("Error code: 429", "Retrying API call")
+WORKER_LOG = re.compile(r"^(sess_[0-9a-f]+)-\d+\.log$")
+
+
+def run_session_ids(join_csv: Path) -> dict[str, set[str]]:
+    """run name -> every session id of the run in ``join.csv`` (primary and retried)."""
+    runs: dict[str, set[str]] = defaultdict(set)
+    with join_csv.open(encoding="utf-8") as handle:
+        for row in csv.DictReader(handle):
+            runs[row["run"]].add(row["session_id"])
+    return runs
+
+
+def rate_limits(worker_log_dir: Path, sessions: set[str]) -> dict[str, dict[str, int]]:
+    """session -> {"429": n, "retry_waits": n} for the sessions with at least one hit."""
+    out: dict[str, dict[str, int]] = {}
+    for path in sorted(worker_log_dir.glob("sess_*.log")):
+        match = WORKER_LOG.match(path.name)
+        if match is None or match.group(1) not in sessions:
+            continue
+        counts = {"429": 0, "retry_waits": 0}
+        with path.open(encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                counts["429"] += RATE_LIMIT_MARKERS[0] in line
+                counts["retry_waits"] += RATE_LIMIT_MARKERS[1] in line
+        if counts["429"] or counts["retry_waits"]:
+            entry = out.setdefault(match.group(1), {"429": 0, "retry_waits": 0})
+            for key, value in counts.items():
+                entry[key] += value
+    return out
+
+
+def backend_run_seconds(gateway_logs: list[Path], sessions: set[str]) -> list[float]:
+    """Gateway ``backend_run_dispatched`` -> ``backend_run_done`` durations of the sessions' runs."""
+    dispatched: dict[str, float] = {}
+    out: list[float] = []
+    for log in gateway_logs:
+        for record in iter_jsonl(log):
+            if record.get("session_id") not in sessions:
+                continue
+            if record.get("event") == "backend_run_dispatched":
+                dispatched[str(record.get("run_id"))] = float(record["ts"])
+            elif (
+                record.get("event") == "backend_run_done"
+                and str(record.get("run_id")) in dispatched
+            ):
+                out.append(
+                    float(record["ts"]) - dispatched.pop(str(record.get("run_id")))
+                )
+    return out
 
 
 def p90(values: list[float]) -> float:
@@ -416,6 +472,23 @@ def _cmd_checks(args: argparse.Namespace) -> int:
     return 1 if bad else 0
 
 
+def _cmd_ratelimit(args: argparse.Namespace) -> int:
+    invalid = 0
+    for run, sessions in sorted(run_session_ids(args.join).items()):
+        hits = rate_limits(args.worker_logs, sessions)
+        durations = backend_run_seconds(args.gateway_logs, sessions)
+        p90_s = f"{p90(durations):.1f}s" if durations else "n/a"
+        total_429 = sum(h["429"] for h in hits.values())
+        waits = sum(h["retry_waits"] for h in hits.values())
+        verdict = "INVALID (re-run it)" if hits else "OK"
+        invalid += bool(hits)
+        print(
+            f"P0.1 {run}: 429s {total_429}, retry waits {waits}, throttled sessions {len(hits)}/{len(sessions)}; "
+            f"backend run p90 {p90_s} (n={len(durations)}): {verdict}"
+        )
+    return 1 if invalid else 0
+
+
 def _cmd_campaign_runs(args: argparse.Namespace) -> int:
     for run in campaign_runs(args.consoles, args.campaign):
         print(run)
@@ -479,6 +552,22 @@ def main(argv: list[str] | None = None) -> int:
         help="raw voice event logs (to reclassify a C4 FAIL)",
     )
     p.set_defaults(func=_cmd_checks)
+
+    p = sub.add_parser(
+        "ratelimit", help="the 429 gate: backend rate limits per run (P0.1)"
+    )
+    p.add_argument("--join", type=Path, required=True, help="join.csv of the report")
+    p.add_argument(
+        "--worker-logs", type=Path, required=True, help="Hermes worker log directory"
+    )
+    p.add_argument(
+        "--gateway-logs",
+        type=Path,
+        nargs="*",
+        default=[],
+        help="gateway event logs (p90)",
+    )
+    p.set_defaults(func=_cmd_ratelimit)
 
     p = sub.add_parser("campaign-runs", help="runs started since the campaign began")
     p.add_argument("consoles", type=Path)

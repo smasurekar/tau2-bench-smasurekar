@@ -8,6 +8,8 @@ matched 1/1 ·
 with `gateway.eval.yaml`; agent runbook §6.2 and `tau3-voice-domain-specific-changes-genericization.md` in the agent
 repo). The scripts check its profile, gateway config and logs; `dlg` and `silentack` remain as historical arms. The
 stack runs `geval` (checked with `check_stack.sh`: READY); no `geval` run has been made yet ·
+**Updated 2026-10-07:** `report.sh` runs the 429 gate (P0.1 of the agent repo's `tau3-geval-failure-fixes-plan.md`): a
+run with a backend rate limit in its Hermes worker logs is invalid and must be re-run (§7, step 4) ·
 **Scripts:** [`fdh_voice_eval/`](fdh_voice_eval/README.md) ·
 **Agent runbook (starting the stack):** `nemotron-voice-agent-smasurekar/misc/prototypes/frontend-delegation-hermes/runbook.md` ·
 **Agent design:** `nemotron-voice-agent-smasurekar/misc/prototypes/frontend-delegation-hermes/prototype-plan.md` ·
@@ -125,7 +127,8 @@ running arm, so arms that need different gateway configs (`geval` and `silentack
 logs go to `logs/fdh_workers/`. Every gateway record and worker log file is keyed by the voice session id
 (`sess_…`). The per-arm settings live in `fdh_lib.sh` (`fdh_port`, `fdh_container`, `fdh_profile`,
 `fdh_event_log`, `fdh_gateway_config`, `fdh_gateway_log`). `FDH_ARM` sets the default arm (`geval`), and
-`FDH_GATEWAY_LOG` overrides the gateway log.
+`FDH_GATEWAY_LOG` overrides the gateway log, and `FDH_WORKER_LOGS` overrides the worker log directory
+(`fdh_worker_logs`, default `$AGENT/logs/fdh_workers`) that the 429 gate reads.
 
 To start the `geval` stack, follow the agent runbook §6.2: §3 with `FDH_GATEWAY_CONFIG=gateway.eval.yaml` and
 `FDH_GATEWAY_LOG=logs/fdh_gateway_events.realtime_eval.jsonl`, and §4 with `FDH_PROFILE=realtime_eval.yaml` and
@@ -370,7 +373,7 @@ $E/report.sh --tag smoke mock airline retail telecom banking_knowledge     # -> 
 | Concurrent workers | `status.sh $RUN` → `gateway`, and `grep -E '"event": "(session_open\|capacity_refused)"' $AGENT/logs/fdh_gateway_events.jsonl \| tail` | 4 `session_open` close together in time (airline smoke); `gateway_capacity_refused_all_time` unchanged |
 | No agent failures | `docker logs --since "$(head -1 $FDH_CONSOLES/$RUN.start)" fdh-voice 2>&1 \| grep -Ei " failed\|error\|\b401\b" \| head` | nothing relevant |
 | Worker health | `grep -il traceback $AGENT/logs/fdh_workers/sess_*.log` | no tracebacks ("Auxiliary Nous client unavailable" is harmless) |
-| Report | `report.sh` | ends with `report.sh OK`: adapter exit 0; C1–C5, C7, C8 PASS, C6 FAIL (allowed); `0 mismatch` in `exact_join.txt` |
+| Report | `report.sh` | ends with `report.sh OK`: adapter exit 0; C1–C5, C7, C8 PASS, C6 FAIL (allowed); every `P0.1` line in `checks.txt` `OK`; `0 mismatch` in `exact_join.txt` |
 
 **Dry run, 2026-09-29** (a `control` run, before the regular-only rule). `report.sh --cx control --tag smoke mock`
 ran on the agent runbook's `fdh_voice_dlg_mock_control_smoke` (1 task), with outputs in `/tmp`:
@@ -430,8 +433,8 @@ $E/report.sh                                 # geval, regular, the four domains 
 $E/report.sh --arms dlg,silentack            # the historical silentack comparison -> _metrics/fdh_voice_dlg-silentack_regular/
 ```
 
-It prints the results table at the end, and it exits 1 when the adapter, an unexpected check or the exact join
-fails. Every output is still written. The steps, in order:
+It prints the results table at the end, and it exits 1 when the adapter, an unexpected check, the 429 gate or the
+exact join fails. Every output is still written. The steps, in order:
 
 1. **Report adapter** (agent repo, `cli/report_adapter.py`), run on the arm's whole shared event log. It writes
    `_metrics/_legacy/fdh_voice_<arm>_events.legacy.jsonl`. `fba_voice_metrics.py` expects one backend operation per
@@ -466,6 +469,13 @@ fails. Every output is still written. The steps, in order:
    | C7 filler records present | PASS |
    | C8 terminations | PASS (`user_stop`/`agent_stop`); `too_many_errors` or inactivity endings are agent results, but list them |
 
+   Then the **429 gate** (`fdh_logs.py ratelimit`) appends one line per run to `checks.txt`. It reads every session
+   of the run in `join.csv` (primary and retried) and counts `Error code: 429` and `Retrying API call` lines in its
+   Hermes worker logs (`sess_<id>-<n>.log` in `fdh_worker_logs`). It also prints the backend-run p90 from the
+   gateway log (`backend_run_dispatched` → `backend_run_done`). A run with any throttled session is
+   `INVALID (re-run it)` and fails the report: its scores are not comparable in an A/B. On the geval dump, telecom
+   was INVALID (30 throttled sessions) and retail r3 was OK.
+
 5. **Exact join** (`exact_join.txt`). With `--verbose-logs`, each simulation's `task.log` records the Realtime
    session id the agent sent back (`OpenAI Realtime API: session created (session_id=sess_…)`). That id is the
    agent's `session_id`, so every join in `join.csv` is checked exactly, including for tasks without tool calls,
@@ -486,14 +496,20 @@ fails. Every output is still written. The steps, in order:
 **Pass^1 and the tau2 interaction metrics alone** don't need any of this: use the reference runbook §7.1 with
 `RUN=fdh_voice_geval_<domain>_regular`.
 
-The helpers behind steps 4–6 are `fdh_logs.py checks | exact-join | filler`, and they can be run on their own. For
-example, to rerun them on archived copies:
+The helpers behind steps 4–6 are `fdh_logs.py checks | ratelimit | exact-join | filler`, and they can be run on
+their own. For example, to rerun them on archived copies:
 
 ```bash
+python3 $E/fdh_logs.py ratelimit --join $DUMP/tau-3-voice/$CAMPAIGN/_reports/fdh_voice_geval_regular/join.csv \
+  --worker-logs $DUMP/tau-3-voice/$CAMPAIGN/fdh_voice_geval_telecom_regular/agent/workers \
+  --gateway-logs $DUMP/tau-3-voice/$CAMPAIGN/fdh_voice_geval_telecom_regular/agent/gateway_events.jsonl
 python3 $E/fdh_logs.py exact-join data/simulations/fdh_voice_geval_airline_regular --join $FDH_METRICS/fdh_voice_geval_regular/join.csv
 python3 $E/fdh_logs.py filler $DUMP/tau-3-voice/$CAMPAIGN/fdh_voice_geval_airline_regular/agent/events.jsonl \
   --join $DUMP/tau-3-voice/$CAMPAIGN/_reports/fdh_voice_geval_regular/join.csv
 ```
+
+On archived copies, each run has its own worker logs, so `ratelimit` checks only the run whose `agent/workers/` you
+pass; ignore the `OK` lines of the other runs in `join.csv`.
 
 ## 8. How to read the numbers
 
@@ -615,6 +631,7 @@ airline tasks). Specific to this agent:
 | `ADAPTER CHECK FAILED`: `tool call … has no backend run` | a client tool call in the voice log whose Hermes run is missing (e.g. the worker died mid-run). Look up the session in `logs/fdh_workers/` and report it; the rest of the report is still valid |
 | `UNEXPECTED FAIL: … C1` | §2.3 not applied (`check_stack.sh`), a reused model tag, or sessions from an aborted attempt under the same name. `exact_join.txt` shows which tasks |
 | `exact_join.txt` lists `task.log None` | the run was made without `--verbose-logs`, or the simulation never connected (an infrastructure error) |
+| `checks.txt`: `P0.1 <run>: … INVALID (re-run it)` | the backend was rate-limited (HTTP 429) in that run. List the throttled sessions with `grep -l "Error code: 429" $(fdh_worker_logs)/sess_*.log`, and re-run the domain in a quieter window or with a dedicated quota |
 | `report.sh`: `skip …: no results.json` | the domain has not run yet (or ran under another `--tag`/`--cx`) |
 | `archive.sh`: `gateway_env.txt` empty | the gateway is not running on this host; record its env from the agent runbook §3 command |
 | banking_knowledge: `No module named 'rank_bm25'` | `uv sync --extra voice --extra dev --extra knowledge` (§2.1) |

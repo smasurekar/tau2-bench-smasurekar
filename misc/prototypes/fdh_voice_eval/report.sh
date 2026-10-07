@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # The full report of fdh-voice runs (runbook §7): report adapter, setup record, fba_voice_metrics.py,
-# check summary (C6 may FAIL by design), exact join against task.log, measured filler latency.
+# check summary (C6 may FAIL by design), the 429 gate (a throttled run is invalid; P0.1 of the agent's
+# tau3-geval-failure-fixes-plan.md), exact join against task.log, measured filler latency.
 # usage: report.sh [--arms geval|dlg[,silentack]] [--cx regular|control] [--tag TAG] [--out NAME] [domain...]
 #        (default: --arms $FDH_ARM (geval) --cx regular, the four domains; domains without a run directory are skipped)
 # e.g.   report.sh --tag smoke airline          -> _metrics/fdh_voice_geval_regular_smoke/
@@ -22,7 +23,7 @@ out=$FDH_METRICS/${out:-fdh_voice_${arms//,/-}_${cx}${tag:+_$tag}}
 mkdir -p "$out" "$FDH_METRICS/_legacy" "$FDH_METRICS/_setup"
 status=0
 
-run_args=() log_args=() setup_args=() run_dirs=() event_logs=()
+run_args=() log_args=() setup_args=() run_dirs=() event_logs=() gateway_logs=()
 for arm in "${arm_list[@]}"; do
   fdh_port "$arm" >/dev/null || exit 2
   ev=$(fdh_event_log "$arm"); legacy=$(fdh_legacy_log "$arm"); c=$(fdh_container "$arm")
@@ -50,6 +51,7 @@ JSON
   fi
   [ -f "$setup" ] && setup_args+=(--setup "$arm=$setup")
   log_args+=(--event-log "$arm=$legacy"); event_logs+=("$ev")
+  gl=$(fdh_gateway_log "$arm"); [ -f "$gl" ] && gateway_logs+=("$gl")
 
   for d in "${domains[@]}"; do
     r=$TAU2/data/simulations/fdh_voice_${arm}_${d}_${cx}${tag:+_$tag}
@@ -67,6 +69,11 @@ echo "metrics exit=$? (1 is expected: C6 FAILs by design); console: $out/console
 echo "== checks"
 fdh_logs checks "$out/fba_voice_metrics.json" --allow-fail C6 \
   --join "$out/join.csv" --event-logs "${event_logs[@]}" | tee "$out/checks.txt"
+[ "${PIPESTATUS[0]}" -eq 0 ] || status=1
+
+echo "== 429 gate (P0.1): a run with a backend rate limit is invalid"
+fdh_logs ratelimit --join "$out/join.csv" --worker-logs "$(fdh_worker_logs)" --gateway-logs "${gateway_logs[@]}" \
+  | tee -a "$out/checks.txt"
 [ "${PIPESTATUS[0]}" -eq 0 ] || status=1
 
 echo "== exact join against task.log"

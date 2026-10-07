@@ -17,13 +17,13 @@ is modified.
 | `run.sh <arm> <domain> <cx> [tau2 args]` | One tau2 run through I0; banking_knowledge gets `--retrieval-config ${TAU3_RETRIEVAL:-bm25}` | §5 |
 | `campaign.sh [--arm] [--cx] [domain...]` | The reportable runs, domain by domain (default: airline retail telecom banking_knowledge); for tmux | §6 |
 | `status.sh [run...]` | Progress: tau2 status line, error counts, agent-side counts, health. No argument = every run of the campaign | §6 |
-| `report.sh [--arms] [--cx] [--tag] [domain...]` | Report adapter → setup record → `fba_voice_metrics.py` → check summary (C6 allowed to fail) → exact join against `task.log` → measured filler latency | §7 |
+| `report.sh [--arms] [--cx] [--tag] [domain...]` | Report adapter → setup record → `fba_voice_metrics.py` → check summary (C6 allowed to fail) → 429 gate (a throttled run is invalid) → exact join against `task.log` → measured filler latency | §7 |
 | `archive.sh <run>... \| --all \| --reports` | Copies runs, their agent/gateway/worker logs, configs and provenance (including the agent's untracked prototype source) to `$DUMP/tau-3-voice/$CAMPAIGN/` | §9 |
-| `fdh_logs.py` | Stdlib helpers behind the scripts: `sessions`, `filter`, `exact-join`, `filler`, `status`, `checks`, `campaign-runs` | — |
+| `fdh_logs.py` | Stdlib helpers behind the scripts: `sessions`, `filter`, `exact-join`, `filler`, `status`, `checks`, `ratelimit` (the 429 gate), `campaign-runs` | — |
 | `tests/` | Offline tests for `fdh_logs.py` | — |
 
 Environment overrides (defaults in `fdh_lib.sh`): `TAU2`, `AGENT`, `HERMES`, `DUMP`, `IHUB`, `DOCKER_HOST_IP`,
-`FDH_GATEWAY_URL`, `FDH_GATEWAY_LOG`, `FDH_CONSOLES`, `FDH_METRICS`, `CAMPAIGN`, `FDH_ARM`; per run: `TAU3_TAG`,
+`FDH_GATEWAY_URL`, `FDH_GATEWAY_LOG`, `FDH_WORKER_LOGS`, `FDH_CONSOLES`, `FDH_METRICS`, `CAMPAIGN`, `FDH_ARM`; per run: `TAU3_TAG`,
 `TAU3_CONCURRENCY`, `TAU3_RETRIEVAL`.
 
 Arms (`fdh_lib.sh`): `geval` (the default) runs `profiles/realtime_eval.yaml` with `gateway.eval.yaml`, the

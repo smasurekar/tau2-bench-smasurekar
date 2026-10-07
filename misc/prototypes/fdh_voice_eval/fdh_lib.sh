@@ -54,6 +54,9 @@ fdh_gateway_log() { # <arm> -> gateway event log (host path); FDH_GATEWAY_LOG ov
   elif [ "$1" = geval ]; then echo "$AGENT/logs/fdh_gateway_events.realtime_eval.jsonl"
   else echo "$AGENT/logs/fdh_gateway_events.jsonl"; fi
 }
+fdh_worker_logs() { # the Hermes worker log directory (gateway FDH_WORKER_LOG_DIR, host path); FDH_WORKER_LOGS overrides
+  echo "${FDH_WORKER_LOGS:-$AGENT/logs/fdh_workers}"
+}
 fdh_legacy_log() { # <arm> -> report-adapter output of that log
   echo "$FDH_METRICS/_legacy/$(basename "$(fdh_event_log "$1")" .jsonl).legacy.jsonl"
 }

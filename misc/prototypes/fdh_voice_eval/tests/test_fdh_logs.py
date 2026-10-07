@@ -283,3 +283,102 @@ def test_c4_barge_in_undercount_is_reclassified(tmp_path: Path, event_log: Path)
     ):
         metrics.write_text(json.dumps([{"run_name": RUN, "checks": [check(detail)]}]))
         assert fdh_logs.unexpected_failures(metrics, {"C6"}, join, [raw])[1]
+
+
+def test_ratelimit_gate_flags_a_throttled_run(tmp_path: Path, capsys) -> None:
+    join = tmp_path / "join.csv"
+    with join.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(
+            ["arm", "run", "session_id", "task_id", "trial", "sim_id", "method", "role"]
+        )
+        writer.writerow(
+            [
+                "geval",
+                "fdh_voice_geval_retail_regular",
+                "sess_aa",
+                "1",
+                "0",
+                "x",
+                "call_id",
+                "primary",
+            ]
+        )
+        writer.writerow(
+            [
+                "geval",
+                "fdh_voice_geval_retail_regular",
+                "sess_bb",
+                "2",
+                "0",
+                "y",
+                "call_id",
+                "retried",
+            ]
+        )
+        writer.writerow(
+            [
+                "geval",
+                "fdh_voice_geval_airline_regular",
+                "sess_cc",
+                "1",
+                "0",
+                "z",
+                "call_id",
+                "primary",
+            ]
+        )
+    workers = tmp_path / "workers"
+    workers.mkdir()
+    (workers / "sess_aa-1.log").write_text("ok\n", encoding="utf-8")
+    (workers / "sess_bb-1.log").write_text(
+        "Streaming failed: Error code: 429\nRetrying API call in 60s\n",
+        encoding="utf-8",
+    )
+    (workers / "sess_cc-1.log").write_text("fine\n", encoding="utf-8")
+    (workers / "sess_dd-1.log").write_text(
+        "Error code: 429\n", encoding="utf-8"
+    )  # not in the join
+    gateway = write_jsonl(
+        tmp_path / "gateway.jsonl",
+        [
+            {
+                "ts": 10.0,
+                "event": "backend_run_dispatched",
+                "session_id": "sess_cc",
+                "run_id": "r1",
+            },
+            {
+                "ts": 14.0,
+                "event": "backend_run_done",
+                "session_id": "sess_cc",
+                "run_id": "r1",
+            },
+        ],
+    )
+    assert fdh_logs.rate_limits(workers, {"sess_aa", "sess_bb"}) == {
+        "sess_bb": {"429": 1, "retry_waits": 1}
+    }
+    code = fdh_logs.main(
+        [
+            "ratelimit",
+            "--join",
+            str(join),
+            "--worker-logs",
+            str(workers),
+            "--gateway-logs",
+            str(gateway),
+        ]
+    )
+    out = capsys.readouterr().out
+    assert code == 1
+    assert (
+        "fdh_voice_geval_retail_regular: 429s 1, retry waits 1, throttled sessions 1/2"
+        in out
+    )
+    assert "INVALID" in out
+    assert (
+        "fdh_voice_geval_airline_regular: 429s 0, retry waits 0, throttled sessions 0/1"
+        in out
+    )
+    assert "backend run p90 4.0s (n=1): OK" in out
