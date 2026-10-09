@@ -10,6 +10,8 @@ repo). The scripts check its profile, gateway config and logs; `dlg` and `silent
 stack runs `geval` (checked with `check_stack.sh`: READY); no `geval` run has been made yet ·
 **Updated 2026-10-07:** `report.sh` runs the 429 gate (P0.1 of the agent repo's `tau3-geval-failure-fixes-plan.md`): a
 run with a backend rate limit in its Hermes worker logs is invalid and must be re-run (§7, step 4) ·
+**Updated 2026-10-09:** the user simulator / judge model is a per-campaign choice between Hub `gpt-5.2` and `gpt-5.5`;
+always ask the user which one (§2.2.1, with the exact gpt-5.5 command) ·
 **Scripts:** [`fdh_voice_eval/`](fdh_voice_eval/README.md) ·
 **Agent runbook (starting the stack):** `nemotron-voice-agent-smasurekar/misc/prototypes/frontend-delegation-hermes/runbook.md` ·
 **Agent design:** `nemotron-voice-agent-smasurekar/misc/prototypes/frontend-delegation-hermes/prototype-plan.md` ·
@@ -21,6 +23,12 @@ every log and artifact archived in the dump repository. `src/tau2/` is not modif
 
 > **Concurrency: `--max-concurrency 4` for every domain except `mock` (1).** `fdh_lib.sh` sets it
 > (`fdh_concurrency`). Set `TAU3_CONCURRENCY` to override it.
+
+> **ALWAYS ASK the user which Inference Hub model to use for the user simulator and the judge before any run:
+> `azure/openai/gpt-5.2` (the scripts' default) or `openai/openai/gpt-5.5`.** Do not pick one yourself, and do not
+> carry a choice over from an earlier campaign. The same model is used for the user simulator, the NL-assertion judge
+> and the hallucination check / review model. The two are not comparable (see §2.2.1), so record the choice in the run
+> card and keep it fixed for every domain of a campaign. For gpt-5.5, launch with the exact command in §2.2.1.
 
 > **Speech complexity: `regular` for every domain, the mock smoke included.** Every command in this runbook passes
 > `regular`. `control` (clean speech) is not used in this campaign. `run.sh` records the speech complexity on each
@@ -228,6 +236,48 @@ run a degraded user.
 variables are I0's defaults, so the file needs no change. Run the reference runbook §2.3 endpoint check once
 (about a minute) if the key or `.env` changed since the last campaign.
 
+#### 2.2.1 Choosing the user simulator / judge model: gpt-5.2 or gpt-5.5 (ask the user every time)
+
+**Before every run, ask the user which Inference Hub model to use: `azure/openai/gpt-5.2` or `openai/openai/gpt-5.5`.**
+The choice applies to three roles together: the user simulator LLM, the NL-assertion judge (`TAU2_JUDGE_MODEL`) and the
+hallucination check / review model (`TAU2_REVIEW_MODEL`). The user TTS (`gpt-4o-mini-tts`) and the user decision LLM
+(`gpt-4.1`) stay unchanged.
+
+- **gpt-5.2** (default): run `run.sh` / `campaign.sh` as written in this runbook. Nothing else to set.
+- **gpt-5.5**: `fdh_run` hardcodes gpt-5.2, so override it without editing the scripts. Extra arguments go after the
+  defaults and win; the env vars beat `.env` (tau2's `load_dotenv()` does not override). Use a tag so the run names
+  differ from gpt-5.2 runs. Exact command (LiteLLM needs the extra `openai/` provider prefix in front of the Hub name):
+
+  ```bash
+  M=openai/openai/openai/gpt-5.5          # Hub model openai/openai/gpt-5.5
+  TAU2_JUDGE_MODEL=$M TAU2_REVIEW_MODEL=$M TAU3_TAG=gpt55 \
+    $E/run.sh geval <domain> regular \
+      --user-llm $M \
+      --user-llm-args '{"temperature": 0.0, "api_base": "https://inference-api.nvidia.com/v1"}' \
+      --review-model $M
+  ```
+
+  In tmux, also pass `-e OPENAI_API_KEY="$OPENAI_API_KEY"` (and `DUMP` on the `/localhome` host), and keep
+  `TAU2_JUDGE_MODEL`/`TAU2_REVIEW_MODEL` exported in the shell that runs `report.sh` and `archive.sh`, so the results
+  table names the right judge: `export TAU2_JUDGE_MODEL=openai/openai/openai/gpt-5.5`.
+
+**Verify it took effect** (the `.env` still says gpt-5.2):
+
+- the console log shows `REVIEW LLM OVERRIDE: openai/openai/openai/gpt-5.5` and `User: … → openai/openai/openai/gpt-5.5`;
+- the call logs: `cat data/simulations/<run>/artifacts/*/sim_*/llm_debug/*nl_assertions_eval* | grep -o '"model": "[^"]*"' | sort | uniq -c`
+  shows gpt-5.5 (also check `*user_streaming_response*`);
+- `provenance/tau2_endpoints.txt` in the archive records the `.env` value (gpt-5.2), **not** the model used. Write the
+  real judge in the run card.
+
+**Report with gpt-5.5:** `report.sh --tag gpt55 <every finished domain>`. All domains with the same tag share
+`_metrics/fdh_voice_<arm>_<cx>_gpt55/`, so a single-domain call overwrites the others' report.
+
+**gpt-5.2 and gpt-5.5 numbers are not comparable.** On the 2026-10-08 campaign
+(`2026-10-08_11-04-25Z_fdh-voice-geval-gpt55usr`), same agent and stack: retail 0.658 vs 0.623, airline 0.780 vs 0.740,
+but telecom 0.439 vs 0.725 (clean tasks). The gpt-5.5 user follows "only share information when asked" (it doesn't
+volunteer being abroad, so roaming is never fixed) and hangs up sooner during agent silence. The tau2 interaction
+metrics (R_R, I_A, S_ND) also shift with the user model. Compare only runs with the same user/judge model.
+
 ### 2.3 The concurrency-safe session join in `fba_voice_metrics.py`
 
 At concurrency > 1 the committed `fba_voice_metrics.py` picks the wrong session for some tasks. The simulations
@@ -358,6 +408,7 @@ $E/report.sh --tag smoke mock airline retail telecom banking_knowledge     # -> 
 | Check | Command / where | Pass when |
 |---|---|---|
 | I0 active | `grep OVERRIDE $FDH_CONSOLES/$RUN.log` | `USER TTS OVERRIDE`, `USER DECISION LLM OVERRIDE`, `REVIEW LLM OVERRIDE` |
+| User sim / judge model | `grep -E "REVIEW LLM OVERRIDE\|User: " $FDH_CONSOLES/$RUN.log` | the model the user chose (§2.2.1): `…gpt-5.2` or `…gpt-5.5` |
 | **No failed LLM calls** | `status.sh $RUN` → `badLLM` | `0` (tau2 catches these and runs a degraded user) |
 | Concurrency | first line of `$FDH_CONSOLES/$RUN.log` | `max_concurrency=1` for mock, `4` otherwise |
 | Speech complexity | the same line | `speech_complexity=regular`, and no `WARN speech complexity` line |
@@ -645,8 +696,9 @@ Record the following next to any number:
 - the agent's models: frontend (nemotron-3.5-lightning, reasoning off), backend (Hermes `AIAgent` on nemotron-3-ultra,
   reasoning on, budget 1024), ASR and TTS;
 - the filler is **spoken** (`geval`, `dlg`) or not (`silentack`);
-- the user simulator LLM (`azure/openai/gpt-5.2`), the user TTS (`openai/openai/gpt-4o-mini-tts`, via I0), the
-  decision model (`azure/openai/gpt-4.1`, via I0), and the judge and hallucination-check model (`azure/openai/gpt-5.2`);
+- the user simulator LLM and the judge and hallucination-check model: `azure/openai/gpt-5.2` or `openai/openai/gpt-5.5`,
+  whichever the user chose (§2.2.1; never assume), the user TTS (`openai/openai/gpt-4o-mini-tts`, via I0) and the
+  decision model (`azure/openai/gpt-4.1`, via I0);
 - speech complexity; domains and split; trials;
 - **`max_concurrency` (1 for mock, 4 otherwise)**; the banking_knowledge `--retrieval-config`;
 - the commits of the agent, tau2 and Hermes repos and whether each was dirty (the prototype is untracked in the
