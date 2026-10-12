@@ -32,8 +32,80 @@ changes needed for a **standard** (or, failing that, an honestly disclosed
 
 ---
 
+## 0. IMPORTANT: the telecom domain note and how to keep the submission credible (added 2026-10-11)
+
+> [!IMPORTANT]
+> **Every word of the telecom domain note must be disclosed, word for word, in the submission.** This is a hard
+> requirement, not a nice-to-have. Its purpose is to make the submission **extremely credible**: a reviewer who reads
+> `methodology.notes` and our linked code must be able to see exactly what the agent was told, in which domain, why,
+> and how we checked it.
+
+**Background.** The submission is **custom** in any case, because the user simulator, judge and review model are
+gpt-5.5 (non-default). A custom submission must link the implementation, so reviewers can read every prompt.
+
+The plan from the agent repo's
+`misc/prototypes/frontend-delegation-hermes/analysis/2026-10-11_fdh-telecom-gpt55-deep/` adds **one** internal
+operator brief, for telecom only, through the existing `domain_notes` mechanism (`prompts.backend.yaml`
+`backend_domain_notes`, gateway `domains`). In real deployments a telecom agent has its own operator brief; this is
+the same thing. The planned wording, not yet final, is: *"Customers' location affects mobile service. For any
+problem with service, data or messaging, ask early whether they are at home or travelling, unless they have already
+said."*
+
+Status: **planned, not implemented.** No airline or retail notes exist, and none will be added.
+
+### 0.1 What must appear in the submission about the note
+
+In `methodology.notes`, and in the linked methodology doc:
+
+1. **The full note text, word for word**, exactly as rendered into the backend prompt. No paraphrase or summary.
+2. **Where it renders:** telecom sessions only. Also say how telecom is detected: the gateway `domains` rule, with
+   the tool name(s) it matches.
+3. **That airline and retail never receive it.** Back this with evidence: their `backend_system_sha256` with the
+   note switched on equals the value with it switched off.
+4. **Why it exists:** the telecom policy makes some causes depend on where the customer is (roaming), and none of the
+   agent's tools can show that.
+5. **How it was found, stated honestly:** the need came out of failure analysis of our telecom runs on the scored
+   `base` split, with the gpt-5.5 user simulator.
+6. **How it was validated:** on telecom tasks **outside** `base` (a held-out sample from the 2,171 tasks of the
+   `full` split that are not scored), before a single scored `base` run. Report the held-out results with the note
+   on and off.
+7. **The config:** the `domain_notes: true` switch, and the commit that froze it (one commit and one config for every
+   domain).
+
+### 0.2 Rules for the note's wording
+
+- **Operator level, not task-shaped.** It must be something a real telecom operator would write without having seen
+  τ-bench.
+- **It must not contain:**
+  - fault names (e.g. `user_abroad_roaming_*`, `break_apn_mms_setting`);
+  - task IDs;
+  - values from the database;
+  - chains of reasoning copied from failing tasks (e.g. "for MMS check roaming");
+  - any statement about how the user simulator behaves.
+- **It must not repeat or contradict the τ-bench policy.** The benchmark policy itself is never edited, so
+  `verification.modified_prompts` stays `false`. `verification.details` explains the internal note.
+- **"Unless they have already said".** The agent must not ask a customer who already gave the answer.
+
+### 0.3 Credibility checklist for the whole submission
+
+- **One frozen agent commit and one config for all domains.** Domain behaviour comes only from detection by tool
+  names.
+- **Develop no further fixes on `base`.**
+  - Telecom: use held-out tasks from `full`.
+  - Airline and retail: use `train` for development and `test` as the check.
+  - Then run `base` once with the frozen commit.
+- **Report every `base` run made with the frozen commit.** Don't pick the best one.
+- **List every agent-side fix with its provenance** (§8.2, §8.9), including that the earlier fixes came from failure
+  analysis on `base`.
+- **Publish the ablation (fixes off vs on) and the held-out numbers** next to the `base` scores.
+- **Disclose every τ-bench-side deviation:** user LLM, judge and review model, user TTS, endpoints, number of trials.
+- **After scoring, any change to the note or the config means a new run and a new disclosure.**
+
+---
+
 ## Contents
 
+0. [**IMPORTANT:** the telecom domain note and how to keep the submission credible](#0-important-the-telecom-domain-note-and-how-to-keep-the-submission-credible-added-2026-10-11)
 1. [How submission works](#1-how-submission-works)
 2. [Per-domain vs single submission; scoring](#2-per-domain-vs-single-submission-scoring)
 3. [Standard vs custom](#3-standard-vs-custom)
@@ -425,6 +497,21 @@ That breaks the "identical args across domains" rule (`prepare` hashes it)
 and leaks the domain name to the server. The server appears only to log it
 (`server.py:270`, `engine/session.py:178`), but it should go.
 
+> [!IMPORTANT]
+> **Update 2026-10-11: one neutral tag for every domain.**
+>
+> - **One tag is required.** tau2 records the tag as the agent's model name (`agent_info.llm`, e.g.
+>   `openai:<run name>`). `tau2 submit prepare`
+>   (`validate_submission_traj_set` in `src/tau2/scripts/leaderboard/prepare_submission.py`) rejects a submission
+>   whose domains have different agent names: "Agent / User Simulator should be the same for all results".
+> - **The tag must name only our system.** A tag that uses another company's routing prefix
+>   (`src/tau2/voice/audio_native/openai/provider.py:38-40`) is strictly prohibited: it would misattribute our
+>   trajectories, which is incompatible with a credible submission.
+> - **What to do instead:** use one neutral name for every submitted run: **`nemotron-voice`** (decided 2026-10-11), with a neutral
+>   connection path, for example a small OpenAI-Realtime-compatible provider adapter in `src/tau2/voice/audio_native/`
+>   (the guide's "New Provider" route, by PR, coordinated with Sierra; see §16). Until then, the current `fdh_lib.sh`
+>   `fdh_model` tags are acceptable for internal runs only.
+
 ### 7.6 banking_knowledge retrieval `bm25` (**must fix or disclose**)
 
 Default/leaderboard is `alltools`. `bm25` would show as a non-comparable
@@ -815,8 +902,8 @@ decision or disclosure
    Required keys: `OPENAI_API_KEY` (official OpenAI for `gpt-4.1`),
    `ANTHROPIC_API_KEY` (review model), `ELEVENLABS_API_KEY`,
    `DEEPGRAM_API_KEY`.
-6. A single `--audio-native-model` for every domain (e.g.
-   `pine-nemotron-voice`); no domain in the name.
+6. A single `--audio-native-model` for every domain: `nemotron-voice` (decided 2026-10-11). No domain in the name,
+   and no other company's routing prefix (§7.5).
 7. Banking: default `alltools` retrieval (needs `OPENAI_API_KEY` and the
    sandbox-runtime + `ripgrep bubblewrap socat`), or leave banking out (not in
    Overall).
@@ -872,6 +959,8 @@ without negotiation:
   - every agent-side behaviour (relay rewriting, local answers, hints, domain
     notes, VAD);
   - that the fixes came from failure analysis on the `base` split.
+  - **the telecom domain note, word for word**, with its scope, reason, provenance and held-out validation
+    (**required**; see [§0.1](#01-what-must-appear-in-the-submission-about-the-note)).
 - `references`: link to the code (fork tag) and a methodology doc.
 - `verification.modified_prompts`: `true` only if τ-bench-supplied prompts
   were modified (they are not; we wrap the policy). `verification.details`
@@ -888,9 +977,10 @@ without negotiation:
 python -m tau2.voice.scripts.setup_voices          # paste TAU2_VOICE_ID_* into .env
 
 # 1. Start the frozen agent server (one config for all domains), then per domain:
-PINE_REALTIME_BASE_URL=ws://localhost:8775/v1/realtime PINE_API_KEY=unused \
+# Connection: a neutral OpenAI-Realtime-compatible provider adapter pointing at ws://localhost:8775/v1/realtime
+# (§7.5; not the existing prefix route). <provider> is that adapter's name.
 tau2 run --domain retail --audio-native \
-  --audio-native-provider openai --audio-native-model pine-nemotron-voice \
+  --audio-native-provider <provider> --audio-native-model nemotron-voice \
   --speech-complexity regular --task-split-name base --num-trials 1 \
   --max-concurrency 1 --verbose-logs --save-to nemotron_voice_retail
 # repeat for airline, telecom (and banking_knowledge with default alltools)
@@ -936,7 +1026,8 @@ Schema: `src/tau2/scripts/leaderboard/submission.py`; DOC 422-493.
   - `tau2_bench_version`
   - `user_simulator: "v1.0"`
   - `notes`: architecture, internal prompts, relay behaviour, VAD 800 ms,
-    concurrency, fix provenance
+    concurrency, fix provenance, and **the full text of the telecom domain note, word for word**
+    (§0.1)
   - `verification.modified_prompts`
   - `verification.omitted_questions: false`
   - `verification.details`
