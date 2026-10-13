@@ -302,7 +302,7 @@ def run_status(
     return status
 
 
-C4_ENTRY = re.compile(r"(?P<task>[^;:]+): agent (?P<agent>\d+) vs tau2 (?P<tau2>\d+)")
+C4_ENTRY = re.compile(r"(?P<task>[^;]+?): agent (?P<agent>\d+) vs tau2 (?P<tau2>\d+)")
 INTERRUPT_KINDS = ("barge_in", "thinking_cancelled")
 
 

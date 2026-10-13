@@ -224,3 +224,7 @@ data/simulations/.credentials/
 
 # Cursor IDE
 .cursor/
+
+
+.env.gpt41-judge.bak
+tau2-runs/
