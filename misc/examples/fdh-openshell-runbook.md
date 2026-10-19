@@ -515,7 +515,7 @@ import glob, re, sys
 from tau2.data_model.simulation import Results
 R = sys.argv[1]
 for s in Results.load(f"{R}/results.json").simulations:
-    f = glob.glob(f"{R}/artifacts/task_{s.task_id}/sim_{s.id}/task.log")
+    f = glob.glob(glob.escape(f"{R}/artifacts/task_{s.task_id}/sim_{s.id}/task.log"))   # telecom ids hold [..]
     ids = re.findall(r"session created \(session_id=(sess_[0-9a-f]+)\)", open(f[0]).read()) if f else []
     print(ids[-1] if ids else f"MISSING task {s.task_id}", flush=True)
 PY2
@@ -571,7 +571,9 @@ cat $out/fba_voice_results_table.md
 ```
 
 Expected: C1 PASS (1:1 join), C2 PASS (per-role usage), C3 PASS, C4 PASS or WARN (barge-in undercount in tau2; it stays FAIL
-when a single session has no barge-in — read the gaps: on 2026-10-16 only task 61, 3.5%), C5
+when a single session has no barge-in — read the gaps: on 2026-10-16 only retail task 61, 3.5%; 2026-10-18 airline task
+40, 10%), C1 may list a few "unmatched sessions" when runs back to back overlap in time (2026-10-18: the last telecom
+task and the first airline tasks): each is a `primary` row of its own run in `join.csv`, and exact-join is 0 mismatch, C5
 PASS/WARN (read the failures), **C6 FAIL by design** (the filler is spoken), C7 PASS, C8 PASS (WARN lists
 agent-caused endings); every `P0.1` line OK; exact-join `0 mismatch`. The adapter exits 1 ("orphaned tool call") when a session ended while a
 backend run was in flight (user stop, `too_many_errors`): name those tasks in the run card; it is not data loss. The judge env var
@@ -718,7 +720,8 @@ copied; anything unusual.
 
 ```bash
 cd $DUMP
-grep -rIlE 'sk-[A-Za-z0-9_-]{20,}|nvapi-[A-Za-z0-9_-]{20,}|Bearer [A-Za-z0-9._-]{16,}' tau-3-voice/$CAMPAIGN | head   # must print nothing
+grep -rIlP '(?<![A-Za-z0-9_-])(sk-|nvapi-)[A-Za-z0-9_-]{20,}|Bearer [A-Za-z0-9._-]{16,}' tau-3-voice/$CAMPAIGN | head   # must print nothing
+# (the lookbehind matters: gpt-5.5's reasoning `encrypted_content` blobs contain "…sk-…" mid-token; 2026-10-18 telecom)
 grep -rIl -- "$FDHOS_KEY" tau-3-voice/$CAMPAIGN | head                                                             # must print nothing
 du -sh tau-3-voice/$CAMPAIGN; git lfs track | grep -q wav || { git lfs install && git lfs track "tau-3-voice/**/*.wav" && git add .gitattributes; }
 git add tau-3-voice/$CAMPAIGN && git commit -m "tau-3-voice: $CAMPAIGN fdh openshell (<domains>, regular, <gpt52|gpt55>)"
