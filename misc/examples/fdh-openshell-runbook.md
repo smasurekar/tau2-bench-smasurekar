@@ -10,7 +10,7 @@ side needs only the `fdhos_run` helper of this runbook; `src/tau2/` is not modif
 **Agent code:** `nemotron-voice-agent/src/examples/frontend_delegation_hermes/` (`README.md`) ·
 **Parent runbook (I0, `.env`, metric definitions, gpt-5.5 rule):**
 [`../prototypes/voice-frontend-delegation-hermes-tau3-runbook.md`](../prototypes/voice-frontend-delegation-hermes-tau3-runbook.md)
-(called "the parent runbook" below) · **Sister runbooks (same layout):** [`fbv-v2-tau3-runbook.md`](fbv-v2-tau3-runbook.md)
+(called "the parent runbook" below) · **Sister runbooks (same layout):** [`fba-tau3-runbook.md`](fba-tau3-runbook.md)
 (same repository Realtime server, the base-URL trick and bearer come from there),
 [`fdh-pipecat-tau3-runbook.md`](fdh-pipecat-tau3-runbook.md) (the former FDH Pipecat container, port 8776),
 [`fdh-tau-tau3-runbook.md`](fdh-tau-tau3-runbook.md) · **Scripts:**
